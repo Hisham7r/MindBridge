@@ -1,0 +1,30 @@
+{
+  "name": "mindbridge-backend",
+  "version": "1.0.0",
+  "description": "MindBridge Health-Tech Platform — Backend API",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "nodemon src/index.js",
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.13.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0",
+    "prisma": "^5.22.0"
+  },
+  "keywords": [
+    "mindbridge",
+    "health-tech",
+    "api",
+    "express",
+    "prisma"
+  ],
+  "author": "MindBridge Team",
+  "license": "ISC"
+}

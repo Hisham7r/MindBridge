@@ -1,0 +1,964 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+.env.example
+.gitignore
+nodemon.json
+package.json
+prisma/migrations/20260504184846_init/migration.sql
+prisma/migrations/migration_lock.toml
+prisma/schema.prisma
+src/config/db.js
+src/controllers/admin.controller.js
+src/controllers/auth.controller.js
+src/controllers/payment.controller.js
+src/controllers/session.controller.js
+src/controllers/therapist.controller.js
+src/index.js
+src/middleware/auth.js
+src/middleware/errorHandler.js
+src/middleware/requireRole.js
+src/routes/admin.routes.js
+src/routes/auth.routes.js
+src/routes/payment.routes.js
+src/routes/session.routes.js
+src/routes/therapist.routes.js
+src/services/auth.service.js
+src/services/payment.service.js
+src/services/session.service.js
+src/services/therapist.service.js
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path=".env.example">
+# ── Database ───────────────────────────────────────────────────────────────────
+DATABASE_URL="postgresql://USERNAME:PASSWORD@localhost:5432/mindbridge"
+
+# ── Server ────────────────────────────────────────────────────────────────────
+PORT=5000
+
+# ── Auth ──────────────────────────────────────────────────────────────────────
+JWT_SECRET=your_jwt_secret_here
+
+# ── Environment ───────────────────────────────────────────────────────────────
+NODE_ENV=development
+</file>
+
+<file path=".gitignore">
+# Dependencies
+node_modules/
+
+# Environment — NEVER commit real secrets
+.env
+
+# Prisma generated client (regenerated via prisma generate)
+# node_modules/@prisma/client is already ignored above
+
+# Build output
+dist/
+build/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+</file>
+
+<file path="nodemon.json">
+{
+  "watch": ["src"],
+  "ext": "js,json",
+  "ignore": ["src/**/*.test.js", "node_modules"],
+  "exec": "node src/index.js"
+}
+</file>
+
+<file path="package.json">
+{
+  "name": "mindbridge-backend",
+  "version": "1.0.0",
+  "description": "MindBridge Health-Tech Platform — Backend API",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "nodemon src/index.js",
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.13.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0",
+    "prisma": "^5.22.0"
+  },
+  "keywords": [
+    "mindbridge",
+    "health-tech",
+    "api",
+    "express",
+    "prisma"
+  ],
+  "author": "MindBridge Team",
+  "license": "ISC"
+}
+</file>
+
+<file path="prisma/migrations/20260504184846_init/migration.sql">
+-- CreateEnum
+CREATE TYPE "Role" AS ENUM ('PATIENT', 'THERAPIST', 'ADMIN');
+
+-- CreateEnum
+CREATE TYPE "Track" AS ENUM ('MENTAL_HEALTH', 'CAREER');
+
+-- CreateEnum
+CREATE TYPE "SessionStatus" AS ENUM ('PENDING_PAYMENT', 'CONFIRMED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED');
+
+-- CreateEnum
+CREATE TYPE "PaymentStatus" AS ENUM ('PENDING', 'APPROVED', 'REJECTED');
+
+-- CreateTable
+CREATE TABLE "users" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "email" TEXT NOT NULL,
+    "passwordHash" TEXT NOT NULL,
+    "role" "Role" NOT NULL DEFAULT 'PATIENT',
+    "initials" TEXT NOT NULL,
+    "avatarUrl" TEXT,
+    "phone" TEXT,
+    "language" TEXT NOT NULL DEFAULT 'English',
+    "isVerified" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "users_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "therapists" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "title" TEXT NOT NULL,
+    "credentials" TEXT NOT NULL,
+    "about" TEXT NOT NULL,
+    "methodology" TEXT NOT NULL,
+    "feePkr" INTEGER NOT NULL,
+    "rating" DECIMAL(65,30) NOT NULL DEFAULT 0,
+    "reviewCount" INTEGER NOT NULL DEFAULT 0,
+    "sessionsCount" INTEGER NOT NULL DEFAULT 0,
+    "color" TEXT NOT NULL DEFAULT '#3B82F6',
+    "track" "Track" NOT NULL DEFAULT 'MENTAL_HEALTH',
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+
+    CONSTRAINT "therapists_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "therapist_specializations" (
+    "id" TEXT NOT NULL,
+    "therapistId" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+
+    CONSTRAINT "therapist_specializations_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "therapist_languages" (
+    "id" TEXT NOT NULL,
+    "therapistId" TEXT NOT NULL,
+    "language" TEXT NOT NULL,
+
+    CONSTRAINT "therapist_languages_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "availability_slots" (
+    "id" TEXT NOT NULL,
+    "therapistId" TEXT NOT NULL,
+    "slotDatetime" TIMESTAMP(3) NOT NULL,
+    "isBooked" BOOLEAN NOT NULL DEFAULT false,
+
+    CONSTRAINT "availability_slots_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "sessions" (
+    "id" TEXT NOT NULL,
+    "patientId" TEXT NOT NULL,
+    "therapistId" TEXT NOT NULL,
+    "slotId" TEXT NOT NULL,
+    "status" "SessionStatus" NOT NULL DEFAULT 'PENDING_PAYMENT',
+    "sessionNumber" INTEGER NOT NULL,
+    "sessionType" TEXT NOT NULL,
+    "zoomLink" TEXT,
+    "notes" TEXT,
+    "moodPost" TEXT,
+    "durationMins" INTEGER NOT NULL DEFAULT 60,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "sessions_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "payments" (
+    "id" TEXT NOT NULL,
+    "sessionId" TEXT NOT NULL,
+    "patientId" TEXT NOT NULL,
+    "amountPkr" INTEGER NOT NULL,
+    "serviceFee" INTEGER NOT NULL DEFAULT 250,
+    "totalPkr" INTEGER NOT NULL,
+    "txnId" TEXT NOT NULL,
+    "screenshotUrl" TEXT NOT NULL,
+    "status" "PaymentStatus" NOT NULL DEFAULT 'PENDING',
+    "reviewedBy" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "approvedAt" TIMESTAMP(3),
+
+    CONSTRAINT "payments_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "therapists_userId_key" ON "therapists"("userId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "sessions_slotId_key" ON "sessions"("slotId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "payments_sessionId_key" ON "payments"("sessionId");
+
+-- AddForeignKey
+ALTER TABLE "therapists" ADD CONSTRAINT "therapists_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "therapist_specializations" ADD CONSTRAINT "therapist_specializations_therapistId_fkey" FOREIGN KEY ("therapistId") REFERENCES "therapists"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "therapist_languages" ADD CONSTRAINT "therapist_languages_therapistId_fkey" FOREIGN KEY ("therapistId") REFERENCES "therapists"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "availability_slots" ADD CONSTRAINT "availability_slots_therapistId_fkey" FOREIGN KEY ("therapistId") REFERENCES "therapists"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "sessions" ADD CONSTRAINT "sessions_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "sessions" ADD CONSTRAINT "sessions_therapistId_fkey" FOREIGN KEY ("therapistId") REFERENCES "therapists"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "sessions" ADD CONSTRAINT "sessions_slotId_fkey" FOREIGN KEY ("slotId") REFERENCES "availability_slots"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "payments" ADD CONSTRAINT "payments_sessionId_fkey" FOREIGN KEY ("sessionId") REFERENCES "sessions"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "payments" ADD CONSTRAINT "payments_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+</file>
+
+<file path="prisma/migrations/migration_lock.toml">
+# Please do not edit this file manually
+# It should be added in your version-control system (i.e. Git)
+provider = "postgresql"
+</file>
+
+<file path="prisma/schema.prisma">
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(uuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         Role      @default(PATIENT)
+  initials     String
+  avatarUrl    String?
+  phone        String?
+  language     String    @default("English")
+  isVerified   Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  patientSessions Session[] @relation("PatientSessions")
+  payments     Payment[]
+  therapistProfile Therapist?
+
+  @@map("users")
+}
+
+enum Role {
+  PATIENT
+  THERAPIST
+  ADMIN
+}
+
+model Therapist {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id])
+  title         String
+  credentials   String
+  about         String
+  methodology   String
+  feePkr        Int
+  rating        Decimal  @default(0)
+  reviewCount   Int      @default(0)
+  sessionsCount Int      @default(0)
+  color         String   @default("#3B82F6")
+  track         Track    @default(MENTAL_HEALTH)
+  isActive      Boolean  @default(true)
+  specializations TherapistSpecialization[]
+  languages       TherapistLanguage[]
+  availableSlots  AvailabilitySlot[]
+  sessions        Session[] @relation("TherapistSessions")
+
+  @@map("therapists")
+}
+
+enum Track {
+  MENTAL_HEALTH
+  CAREER
+}
+
+model TherapistSpecialization {
+  id          String    @id @default(uuid())
+  therapistId String
+  therapist   Therapist @relation(fields: [therapistId], references: [id])
+  name        String
+
+  @@map("therapist_specializations")
+}
+
+model TherapistLanguage {
+  id          String    @id @default(uuid())
+  therapistId String
+  therapist   Therapist @relation(fields: [therapistId], references: [id])
+  language    String
+
+  @@map("therapist_languages")
+}
+
+model AvailabilitySlot {
+  id           String    @id @default(uuid())
+  therapistId  String
+  therapist    Therapist @relation(fields: [therapistId], references: [id])
+  slotDatetime DateTime
+  isBooked     Boolean   @default(false)
+  session      Session?
+
+  @@map("availability_slots")
+}
+
+model Session {
+  id            String        @id @default(uuid())
+  patientId     String
+  patient       User          @relation("PatientSessions", fields: [patientId], references: [id])
+  therapistId   String
+  therapist     Therapist     @relation("TherapistSessions", fields: [therapistId], references: [id])
+  slotId        String        @unique
+  slot          AvailabilitySlot @relation(fields: [slotId], references: [id])
+  status        SessionStatus @default(PENDING_PAYMENT)
+  sessionNumber Int
+  sessionType   String
+  zoomLink      String?
+  notes         String?
+  moodPost      String?
+  durationMins  Int           @default(60)
+  createdAt     DateTime      @default(now())
+  payment       Payment?
+
+  @@map("sessions")
+}
+
+enum SessionStatus {
+  PENDING_PAYMENT
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model Payment {
+  id            String        @id @default(uuid())
+  sessionId     String        @unique
+  session       Session       @relation(fields: [sessionId], references: [id])
+  patientId     String
+  patient       User          @relation(fields: [patientId], references: [id])
+  amountPkr     Int
+  serviceFee    Int           @default(250)
+  totalPkr      Int
+  txnId         String
+  screenshotUrl String
+  status        PaymentStatus @default(PENDING)
+  reviewedBy    String?
+  createdAt     DateTime      @default(now())
+  approvedAt    DateTime?
+
+  @@map("payments")
+}
+
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+</file>
+
+<file path="src/config/db.js">
+import { PrismaClient } from '@prisma/client'
+
+// Singleton PrismaClient — the whole app shares one DB connection pool
+const prisma = new PrismaClient({
+  log: process.env.NODE_ENV === 'development'
+    ? ['query', 'info', 'warn', 'error']
+    : ['warn', 'error'],
+})
+
+export default prisma
+</file>
+
+<file path="src/controllers/admin.controller.js">
+// Admin Controller — Phase 2
+// Will handle: listAllUsers, getDashboardStats, reviewPayment, listAllSessions
+
+export const listAllUsers = async (req, res, next) => {
+  try {
+    res.status(501).json({ message: 'listAllUsers not yet implemented' })
+  } catch (err) { next(err) }
+}
+
+export const getDashboardStats = async (req, res, next) => {
+  try {
+    res.status(501).json({ message: 'getDashboardStats not yet implemented' })
+  } catch (err) { next(err) }
+}
+
+export const reviewPayment = async (req, res, next) => {
+  try {
+    res.status(501).json({ message: 'reviewPayment not yet implemented' })
+  } catch (err) { next(err) }
+}
+
+export const listAllSessions = async (req, res, next) => {
+  try {
+    res.status(501).json({ message: 'listAllSessions not yet implemented' })
+  } catch (err) { next(err) }
+}
+</file>
+
+<file path="src/controllers/auth.controller.js">
+// Auth Controller — Phase 2
+// Will handle: register, login, logout, getMe
+
+export const register = async (req, res, next) => {
+  try {
+    res.status(501).json({ message: 'register not yet implemented' })
+  } catch (err) { next(err) }
+}
+
+export const login = async (req, res, next) => {
+  try {
+    res.status(501).json({ message: 'login not yet implemented' })
+  } catch (err) { next(err) }
+}
+
+export const logout = async (req, res, next) => {
+  try {
+    res.status(501).json({ message: 'logout not yet implemented' })
+  } catch (err) { next(err) }
+}
+
+export const getMe = async (req, res, next) => {
+  try {
+    res.status(501).json({ message: 'getMe not yet implemented' })
+  } catch (err) { next(err) }
+}
+</file>
+
+<file path="src/controllers/payment.controller.js">
+// Payment Controller — Phase 2
+// Will handle: submitPayment, getPayment, approvePayment, rejectPayment
+
+export const submitPayment = async (req, res, next) => {
+  try {
+    res.status(501).json({ message: 'submitPayment not yet implemented' })
+  } catch (err) { next(err) }
+}
+
+export const getPayment = async (req, res, next) => {
+  try {
+    res.status(501).json({ message: 'getPayment not yet implemented' })
+  } catch (err) { next(err) }
+}
+
+export const approvePayment = async (req, res, next) => {
+  try {
+    res.status(501).json({ message: 'approvePayment not yet implemented' })
+  } catch (err) { next(err) }
+}
+
+export const rejectPayment = async (req, res, next) => {
+  try {
+    res.status(501).json({ message: 'rejectPayment not yet implemented' })
+  } catch (err) { next(err) }
+}
+</file>
+
+<file path="src/controllers/session.controller.js">
+// Session Controller — Phase 2
+// Will handle: createSession, getSession, updateSessionStatus, listPatientSessions
+
+export const createSession = async (req, res, next) => {
+  try {
+    res.status(501).json({ message: 'createSession not yet implemented' })
+  } catch (err) { next(err) }
+}
+
+export const getSession = async (req, res, next) => {
+  try {
+    res.status(501).json({ message: 'getSession not yet implemented' })
+  } catch (err) { next(err) }
+}
+
+export const updateSessionStatus = async (req, res, next) => {
+  try {
+    res.status(501).json({ message: 'updateSessionStatus not yet implemented' })
+  } catch (err) { next(err) }
+}
+
+export const listPatientSessions = async (req, res, next) => {
+  try {
+    res.status(501).json({ message: 'listPatientSessions not yet implemented' })
+  } catch (err) { next(err) }
+}
+</file>
+
+<file path="src/controllers/therapist.controller.js">
+// Therapist Controller — Phase 2
+// Will handle: listTherapists, getTherapist, getTherapistSlots, updateTherapist
+
+export const listTherapists = async (req, res, next) => {
+  try {
+    res.status(501).json({ message: 'listTherapists not yet implemented' })
+  } catch (err) { next(err) }
+}
+
+export const getTherapist = async (req, res, next) => {
+  try {
+    res.status(501).json({ message: 'getTherapist not yet implemented' })
+  } catch (err) { next(err) }
+}
+
+export const getTherapistSlots = async (req, res, next) => {
+  try {
+    res.status(501).json({ message: 'getTherapistSlots not yet implemented' })
+  } catch (err) { next(err) }
+}
+
+export const updateTherapist = async (req, res, next) => {
+  try {
+    res.status(501).json({ message: 'updateTherapist not yet implemented' })
+  } catch (err) { next(err) }
+}
+</file>
+
+<file path="src/index.js">
+import express from 'express'
+import cors from 'cors'
+import dotenv from 'dotenv'
+
+// Route imports
+import authRoutes from './routes/auth.routes.js'
+import therapistRoutes from './routes/therapist.routes.js'
+import sessionRoutes from './routes/session.routes.js'
+import paymentRoutes from './routes/payment.routes.js'
+import adminRoutes from './routes/admin.routes.js'
+
+// Middleware imports
+import errorHandler from './middleware/errorHandler.js'
+
+// Load environment variables
+dotenv.config()
+
+const app = express()
+const PORT = process.env.PORT || 5000
+
+// ── Core Middleware ───────────────────────────────────────────────────────────
+app.use(cors())
+app.use(express.json())
+
+// ── Health Check ──────────────────────────────────────────────────────────────
+app.get('/api/health', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    message: 'MindBridge API running',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+  })
+})
+
+// ── API Routes ────────────────────────────────────────────────────────────────
+app.use('/api/auth', authRoutes)
+app.use('/api/therapists', therapistRoutes)
+app.use('/api/sessions', sessionRoutes)
+app.use('/api/payments', paymentRoutes)
+app.use('/api/admin', adminRoutes)
+
+// ── 404 Handler ───────────────────────────────────────────────────────────────
+app.use((req, res) => {
+  res.status(404).json({ error: `Route ${req.method} ${req.path} not found` })
+})
+
+// ── Global Error Handler (must be last) ──────────────────────────────────────
+app.use(errorHandler)
+
+// ── Start Server ──────────────────────────────────────────────────────────────
+app.listen(PORT, () => {
+  console.log(`✅  MindBridge API running on port ${PORT}`)
+  console.log(`🌿  Environment: ${process.env.NODE_ENV || 'development'}`)
+  console.log(`📡  Health check: http://localhost:${PORT}/api/health`)
+})
+
+export default app
+</file>
+
+<file path="src/middleware/auth.js">
+import jwt from 'jsonwebtoken'
+
+/**
+ * Protects routes by verifying the JWT Bearer token in the Authorization header.
+ * On success, attaches the decoded payload to req.user and calls next().
+ * On failure, responds with 401 Unauthorized.
+ *
+ * NOTE: jsonwebtoken will be installed in Phase 2 (npm install jsonwebtoken).
+ *       This file is a stub — it will be fully wired up during auth implementation.
+ */
+export default function auth(req, res, next) {
+  const authHeader = req.headers['authorization']
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'No token provided. Access denied.' })
+  }
+
+  const token = authHeader.split(' ')[1]
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET)
+    req.user = decoded   // { id, email, role }
+    next()
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid or expired token.' })
+  }
+}
+</file>
+
+<file path="src/middleware/errorHandler.js">
+/**
+ * Global Express error handler — must be the LAST middleware registered.
+ * Catches any error passed via next(err) from routes or middleware.
+ */
+export default function errorHandler(err, req, res, next) {
+  console.error(err.stack)
+
+  const status  = err.status  || 500
+  const message = err.message || 'Internal server error'
+
+  res.status(status).json({
+    error: message,
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+  })
+}
+</file>
+
+<file path="src/middleware/requireRole.js">
+/**
+ * Role-based access control middleware factory.
+ * Usage: router.get('/admin-only', auth, requireRole('ADMIN'), handler)
+ *        router.get('/therapist', auth, requireRole('THERAPIST', 'ADMIN'), handler)
+ *
+ * Must be used AFTER the auth middleware (req.user must be set).
+ */
+export default function requireRole(...allowedRoles) {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Authentication required.' })
+    }
+
+    if (!allowedRoles.includes(req.user.role)) {
+      return res.status(403).json({
+        error: `Access denied. Required role: ${allowedRoles.join(' or ')}.`,
+      })
+    }
+
+    next()
+  }
+}
+</file>
+
+<file path="src/routes/admin.routes.js">
+import { Router } from 'express'
+
+const router = Router()
+
+// Stub — Phase 2 will implement: GET /users, GET /stats, PATCH /payments/:id/review
+router.get('/', (req, res) => {
+  res.status(501).json({ message: 'Admin routes not yet implemented' })
+})
+
+export default router
+</file>
+
+<file path="src/routes/auth.routes.js">
+import { Router } from 'express'
+
+const router = Router()
+
+// Stub — Phase 2 will implement: POST /register, POST /login, POST /logout, GET /me
+router.get('/', (req, res) => {
+  res.status(501).json({ message: 'Auth routes not yet implemented' })
+})
+
+export default router
+</file>
+
+<file path="src/routes/payment.routes.js">
+import { Router } from 'express'
+
+const router = Router()
+
+// Stub — Phase 2 will implement: POST /, GET /:id, PATCH /:id/approve, PATCH /:id/reject
+router.get('/', (req, res) => {
+  res.status(501).json({ message: 'Payment routes not yet implemented' })
+})
+
+export default router
+</file>
+
+<file path="src/routes/session.routes.js">
+import { Router } from 'express'
+
+const router = Router()
+
+// Stub — Phase 2 will implement: POST /, GET /:id, PATCH /:id/status
+router.get('/', (req, res) => {
+  res.status(501).json({ message: 'Session routes not yet implemented' })
+})
+
+export default router
+</file>
+
+<file path="src/routes/therapist.routes.js">
+import { Router } from 'express'
+
+const router = Router()
+
+// Stub — Phase 2 will implement: GET /, GET /:id, GET /:id/slots, PATCH /:id
+router.get('/', (req, res) => {
+  res.status(501).json({ message: 'Therapist routes not yet implemented' })
+})
+
+export default router
+</file>
+
+<file path="src/services/auth.service.js">
+import prisma from '../config/db.js'
+import bcrypt from 'bcryptjs'
+import jwt from 'jsonwebtoken'
+
+// NOTE: bcryptjs and jsonwebtoken will be installed in Phase 2
+// npm install bcryptjs jsonwebtoken
+
+/**
+ * Register a new user.
+ * Phase 2 implementation stub.
+ */
+export const registerUser = async ({ name, email, password, role }) => {
+  throw new Error('registerUser service not yet implemented')
+}
+
+/**
+ * Validate credentials and return a signed JWT.
+ * Phase 2 implementation stub.
+ */
+export const loginUser = async ({ email, password }) => {
+  throw new Error('loginUser service not yet implemented')
+}
+
+/**
+ * Return the authenticated user's profile from the DB.
+ * Phase 2 implementation stub.
+ */
+export const getUserById = async (id) => {
+  throw new Error('getUserById service not yet implemented')
+}
+</file>
+
+<file path="src/services/payment.service.js">
+import prisma from '../config/db.js'
+
+/**
+ * Record a new payment submission (screenshot URL + txn ID).
+ * Status defaults to PENDING — admin must approve.
+ * Phase 2 implementation stub.
+ */
+export const submitPayment = async ({ sessionId, patientId, amountPkr, serviceFee, txnId, screenshotUrl }) => {
+  throw new Error('submitPayment service not yet implemented')
+}
+
+/**
+ * Return a single payment record by ID.
+ * Phase 2 implementation stub.
+ */
+export const getPaymentById = async (id) => {
+  throw new Error('getPaymentById service not yet implemented')
+}
+
+/**
+ * Approve a payment — sets status to APPROVED, updates session to CONFIRMED.
+ * Phase 2 implementation stub.
+ */
+export const approvePayment = async (id, reviewedBy) => {
+  throw new Error('approvePayment service not yet implemented')
+}
+
+/**
+ * Reject a payment — sets status to REJECTED, keeps session as PENDING_PAYMENT.
+ * Phase 2 implementation stub.
+ */
+export const rejectPayment = async (id, reviewedBy) => {
+  throw new Error('rejectPayment service not yet implemented')
+}
+</file>
+
+<file path="src/services/session.service.js">
+import prisma from '../config/db.js'
+
+/**
+ * Book a session for a patient with a specific therapist slot.
+ * Marks the slot as isBooked = true, creates the Session record.
+ * Phase 2 implementation stub.
+ */
+export const createSession = async ({ patientId, therapistId, slotId, sessionType }) => {
+  throw new Error('createSession service not yet implemented')
+}
+
+/**
+ * Return a single session by ID, including patient, therapist, and payment data.
+ * Phase 2 implementation stub.
+ */
+export const getSessionById = async (id) => {
+  throw new Error('getSessionById service not yet implemented')
+}
+
+/**
+ * Update a session's status (e.g. CONFIRMED, COMPLETED, CANCELLED).
+ * Phase 2 implementation stub.
+ */
+export const updateStatus = async (id, status) => {
+  throw new Error('updateStatus service not yet implemented')
+}
+
+/**
+ * Return all sessions for a given patient.
+ * Phase 2 implementation stub.
+ */
+export const getSessionsByPatient = async (patientId) => {
+  throw new Error('getSessionsByPatient service not yet implemented')
+}
+</file>
+
+<file path="src/services/therapist.service.js">
+import prisma from '../config/db.js'
+
+/**
+ * Return all active therapists with their specializations and languages.
+ * Supports optional filtering by track, specialization, language, and fee range.
+ * Phase 2 implementation stub.
+ */
+export const getAllTherapists = async (filters = {}) => {
+  throw new Error('getAllTherapists service not yet implemented')
+}
+
+/**
+ * Return a single therapist profile by ID, including availability slots.
+ * Phase 2 implementation stub.
+ */
+export const getTherapistById = async (id) => {
+  throw new Error('getTherapistById service not yet implemented')
+}
+
+/**
+ * Return available (unbooked) slots for a given therapist.
+ * Phase 2 implementation stub.
+ */
+export const getAvailableSlots = async (therapistId) => {
+  throw new Error('getAvailableSlots service not yet implemented')
+}
+
+/**
+ * Update a therapist's profile fields.
+ * Phase 2 implementation stub.
+ */
+export const updateTherapistProfile = async (id, data) => {
+  throw new Error('updateTherapistProfile service not yet implemented')
+}
+</file>
+
+</files>

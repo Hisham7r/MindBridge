@@ -1,0 +1,144 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(uuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         Role      @default(PATIENT)
+  initials     String
+  avatarUrl    String?
+  phone        String?
+  language     String    @default("English")
+  isVerified   Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  patientSessions Session[] @relation("PatientSessions")
+  payments     Payment[]
+  therapistProfile Therapist?
+
+  @@map("users")
+}
+
+enum Role {
+  PATIENT
+  THERAPIST
+  ADMIN
+}
+
+model Therapist {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id])
+  title         String
+  credentials   String
+  about         String
+  methodology   String
+  feePkr        Int
+  rating        Decimal  @default(0)
+  reviewCount   Int      @default(0)
+  sessionsCount Int      @default(0)
+  color         String   @default("#3B82F6")
+  track         Track    @default(MENTAL_HEALTH)
+  isActive      Boolean  @default(true)
+  specializations TherapistSpecialization[]
+  languages       TherapistLanguage[]
+  availableSlots  AvailabilitySlot[]
+  sessions        Session[] @relation("TherapistSessions")
+
+  @@map("therapists")
+}
+
+enum Track {
+  MENTAL_HEALTH
+  CAREER
+}
+
+model TherapistSpecialization {
+  id          String    @id @default(uuid())
+  therapistId String
+  therapist   Therapist @relation(fields: [therapistId], references: [id])
+  name        String
+
+  @@map("therapist_specializations")
+}
+
+model TherapistLanguage {
+  id          String    @id @default(uuid())
+  therapistId String
+  therapist   Therapist @relation(fields: [therapistId], references: [id])
+  language    String
+
+  @@map("therapist_languages")
+}
+
+model AvailabilitySlot {
+  id           String    @id @default(uuid())
+  therapistId  String
+  therapist    Therapist @relation(fields: [therapistId], references: [id])
+  slotDatetime DateTime
+  isBooked     Boolean   @default(false)
+  session      Session?
+
+  @@map("availability_slots")
+}
+
+model Session {
+  id            String        @id @default(uuid())
+  patientId     String
+  patient       User          @relation("PatientSessions", fields: [patientId], references: [id])
+  therapistId   String
+  therapist     Therapist     @relation("TherapistSessions", fields: [therapistId], references: [id])
+  slotId        String        @unique
+  slot          AvailabilitySlot @relation(fields: [slotId], references: [id])
+  status        SessionStatus @default(PENDING_PAYMENT)
+  sessionNumber Int
+  sessionType   String
+  zoomLink      String?
+  notes         String?
+  moodPost      String?
+  durationMins  Int           @default(60)
+  createdAt     DateTime      @default(now())
+  payment       Payment?
+
+  @@map("sessions")
+}
+
+enum SessionStatus {
+  PENDING_PAYMENT
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model Payment {
+  id            String        @id @default(uuid())
+  sessionId     String        @unique
+  session       Session       @relation(fields: [sessionId], references: [id])
+  patientId     String
+  patient       User          @relation(fields: [patientId], references: [id])
+  amountPkr     Int
+  serviceFee    Int           @default(250)
+  totalPkr      Int
+  txnId         String
+  screenshotUrl String
+  status        PaymentStatus @default(PENDING)
+  reviewedBy    String?
+  createdAt     DateTime      @default(now())
+  approvedAt    DateTime?
+
+  @@map("payments")
+}
+
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
