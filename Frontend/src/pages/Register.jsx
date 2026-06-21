@@ -75,7 +75,7 @@ export default function Register() {
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                   className="input-field pr-10"
-                  required
+                  required  
                 />
                 {/* <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">👤</span> */}
               </div>

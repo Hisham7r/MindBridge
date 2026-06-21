@@ -1,10 +1,19 @@
 import { Router } from 'express'
+import auth from '../middleware/auth.js'
+import {
+  register,
+  login,
+  logout,
+  getMe,
+  updateMe,
+} from '../controllers/auth.controller.js'
 
 const router = Router()
 
-// Stub — Phase 2 will implement: POST /register, POST /login, POST /logout, GET /me
-router.get('/', (req, res) => {
-  res.status(501).json({ message: 'Auth routes not yet implemented' })
-})
+router.post('/register', register)
+router.post('/login', login)
+router.post('/logout', auth, logout)
+router.get('/me', auth, getMe)
+router.patch('/me', auth, updateMe)
 
 export default router

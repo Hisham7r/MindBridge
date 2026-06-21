@@ -27,12 +27,14 @@ app.get('/api/health', (req, res) => {
   res.status(200).json({
     status: 'ok',
     message: 'MindBridge API running',
-    timestamp: new Date().toISOString(),
+    timestamp: new Date().toISOString(), 
     environment: process.env.NODE_ENV || 'development',
   })
 })
 
 // ── API Routes ────────────────────────────────────────────────────────────────
+// Concept Route Namespacing?
+// Route namespacing means grouping related routes under a common base path
 app.use('/api/auth', authRoutes)
 app.use('/api/therapists', therapistRoutes)
 app.use('/api/sessions', sessionRoutes)
