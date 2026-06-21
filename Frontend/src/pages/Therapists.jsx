@@ -1,13 +1,27 @@
-import { useState } from 'react';
-import { therapists } from '../data/mockData';
+import { useState, useEffect } from 'react';
+import { api } from '../services/api';
 import TherapistCard from '../components/TherapistCard';
 import Footer from '../components/Footer';
 
 export default function Therapists() {
+  const [therapists, setTherapists] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
   const [specialty, setSpecialty] = useState('');
   const [priceRange, setPriceRange] = useState('');
   const [language, setLanguage] = useState('');
   const [track, setTrack] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    api
+      .getTherapists()
+      .then((data) => { if (active) setTherapists(data); })
+      .catch((err) => { if (active) setError(err.message || 'Could not load therapists.'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
 
   const filtered = therapists.filter((t) => {
     if (specialty && !t.specializations.includes(specialty)) return false;
@@ -98,19 +112,32 @@ export default function Therapists() {
 
           {/* Therapist grid */}
           <main className="flex-1">
-            <p className="text-sm text-gray-500 mb-4">{filtered.length} therapists available</p>
-            {filtered.length === 0 ? (
+            {loading ? (
               <div className="text-center py-20 card">
-                <p className="text-4xl mb-3">🔍</p>
-                <p className="text-gray-500">No therapists match your filters.</p>
-                <button onClick={() => { setSpecialty(''); setPriceRange(''); setLanguage(''); setTrack(''); }} className="btn-outline mt-4 text-sm">
-                  Clear filters
-                </button>
+                <p className="text-gray-400">Loading therapists…</p>
+              </div>
+            ) : error ? (
+              <div className="text-center py-20 card">
+                <p className="text-4xl mb-3">⚠️</p>
+                <p className="text-red-500">{error}</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-5">
-                {filtered.map((t) => <TherapistCard key={t.id} therapist={t} />)}
-              </div>
+              <>
+                <p className="text-sm text-gray-500 mb-4">{filtered.length} therapists available</p>
+                {filtered.length === 0 ? (
+                  <div className="text-center py-20 card">
+                    <p className="text-4xl mb-3">🔍</p>
+                    <p className="text-gray-500">No therapists match your filters.</p>
+                    <button onClick={() => { setSpecialty(''); setPriceRange(''); setLanguage(''); setTrack(''); }} className="btn-outline mt-4 text-sm">
+                      Clear filters
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-5">
+                    {filtered.map((t) => <TherapistCard key={t.id} therapist={t} />)}
+                  </div>
+                )}
+              </>
             )}
           </main>
         </div>

@@ -1,4 +1,4 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useRole } from '../context/RoleContext';
 import { useState } from 'react';
 
@@ -22,16 +22,23 @@ const navItems = {
 };
 
 export default function Navbar() {
-  const { role, setRole, currentUser } = useRole();
+  const { role, currentUser, logout } = useRole();
   const location = useLocation();
+  const navigate = useNavigate();
   const [showDropdown, setShowDropdown] = useState(false);
-  const [showRoleSwitcher, setShowRoleSwitcher] = useState(false);
 
   const isDashboard = location.pathname.startsWith('/dashboard');
 
   if (isDashboard) return null; // dashboards have their own sidebar nav
 
   const items = navItems[role] || navItems.guest;
+  const initials = currentUser?.initials || '··';
+
+  function handleLogout() {
+    logout();
+    setShowDropdown(false);
+    navigate('/login');
+  }
 
   return (
     <nav className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-100 shadow-sm">
@@ -57,30 +64,6 @@ export default function Navbar() {
 
           {/* Right side */}
           <div className="flex items-center gap-3">
-            {/* Role Switcher (Dev only) */}
-            <div className="relative">
-              <button
-                onClick={() => setShowRoleSwitcher(!showRoleSwitcher)}
-                className="hidden md:flex items-center gap-1.5 text-xs bg-gray-100 hover:bg-gray-200 text-gray-500 px-3 py-1.5 rounded-full transition-colors"
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
-                Demo: {role}
-              </button>
-              {showRoleSwitcher && (
-                <div className="absolute right-0 mt-2 w-40 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-50">
-                  {['guest', 'patient', 'therapist', 'admin'].map((r) => (
-                    <button
-                      key={r}
-                      onClick={() => { setRole(r); setShowRoleSwitcher(false); }}
-                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition-colors capitalize ${role === r ? 'text-brand font-semibold' : 'text-gray-700'}`}
-                    >
-                      {r}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
             {role === 'guest' ? (
               <div className="flex items-center gap-2">
                 <Link to="/login" className="btn-outline text-sm py-2 px-4">Log In</Link>
@@ -100,16 +83,16 @@ export default function Navbar() {
                     onClick={() => setShowDropdown(!showDropdown)}
                     className="w-9 h-9 rounded-full bg-brand text-white flex items-center justify-center text-sm font-bold hover:bg-primary-700 transition-colors"
                   >
-                    {currentUser.initials}
+                    {initials}
                   </button>
                   {showDropdown && (
                     <div className="absolute right-0 mt-2 w-44 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-50">
                       <div className="px-4 py-2 border-b border-gray-50">
-                        <p className="text-sm font-semibold text-gray-800">{currentUser.name}</p>
-                        <p className="text-xs text-gray-400">{currentUser.email}</p>
+                        <p className="text-sm font-semibold text-gray-800">{currentUser?.name || 'My Account'}</p>
+                        <p className="text-xs text-gray-400">{currentUser?.email || ''}</p>
                       </div>
-                      <Link to={role === 'patient' ? '/dashboard/patient' : role === 'therapist' ? '/dashboard/therapist' : '/dashboard/admin'} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Dashboard</Link>
-                      <Link to="/login" onClick={() => setRole('guest')} className="block px-4 py-2 text-sm text-red-500 hover:bg-red-50">Logout</Link>
+                      <Link to={role === 'patient' ? '/dashboard/patient' : role === 'therapist' ? '/dashboard/therapist' : '/dashboard/admin'} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" onClick={() => setShowDropdown(false)}>Dashboard</Link>
+                      <button onClick={handleLogout} className="block w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-50">Logout</button>
                     </div>
                   )}
                 </div>

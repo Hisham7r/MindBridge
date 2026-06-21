@@ -5,19 +5,26 @@ import { useRole } from '../context/RoleContext';
 export default function Register() {
   const [tab, setTab] = useState('patient');
   const [form, setForm] = useState({ name: '', email: '', password: '' });
-  const { setRole, setCurrentUser } = useRole();
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const { register } = useRole();
   const navigate = useNavigate();
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
-    setRole(tab);
-    setCurrentUser({
-      name: form.name || 'Sarah Rahman',
-      email: form.email || 'sarah@example.com',
-      initials: (form.name || 'Sarah Rahman').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase(),
-    });
-    if (tab === 'patient') navigate('/dashboard/patient');
-    else navigate('/dashboard/therapist');
+    setError('');
+    setSubmitting(true);
+    try {
+      // UI tab ('patient'/'therapist') -> backend role enum (UPPERCASE).
+      const uiRole = await register(form.name, form.email, form.password, tab.toUpperCase());
+      navigate(uiRole === 'therapist' ? '/dashboard/therapist' : '/dashboard/patient');
+    } catch (err) {
+      // Surface the first field-level validation message if present.
+      const detail = err.details?.[0]?.message;
+      setError(detail || err.message || 'Registration failed. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -48,6 +55,12 @@ export default function Register() {
         <div className="w-full max-w-md">
           <h1 className="text-3xl font-bold text-gray-900">Create your account</h1>
           <p className="text-gray-500 mt-2">Welcome! Let's set up your profile.</p>
+
+          {error && (
+            <p className="text-sm text-red-600 mt-3 bg-red-50 border border-red-100 px-3 py-2 rounded-lg">
+              {error}
+            </p>
+          )}
 
           {/* Tab switcher */}
           <div className="flex bg-gray-100 rounded-full p-1 mt-6">
@@ -119,8 +132,8 @@ export default function Register() {
               </div>
             </div>
 
-            <button type="submit" className="btn-primary w-full py-4 text-base mt-2">
-              Create Account →
+            <button type="submit" disabled={submitting} className="btn-primary w-full py-4 text-base mt-2 disabled:opacity-60 disabled:cursor-not-allowed">
+              {submitting ? 'Creating account…' : 'Create Account →'}
             </button>
           </form>
 

@@ -1,10 +1,29 @@
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { therapists } from '../data/mockData';
+import { api } from '../services/api';
 import Footer from '../components/Footer';
 
 export default function TherapistProfile() {
   const { id } = useParams();
-  const therapist = therapists.find(t => t.id === parseInt(id));
+  const [therapist, setTherapist] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    api
+      .getTherapist(id)
+      .then((data) => { if (active) setTherapist(data); })
+      .catch(() => { if (active) setTherapist(null); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [id]);
+
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center bg-bg">
+      <p className="text-gray-400 text-sm">Loading profile…</p>
+    </div>
+  );
 
   if (!therapist) return (
     <div className="min-h-screen flex items-center justify-center bg-bg">

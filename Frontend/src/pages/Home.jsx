@@ -1,13 +1,26 @@
 import { Link } from 'react-router-dom';
-import { useState } from 'react';
-import { therapists } from '../data/mockData';
+import { useState, useEffect } from 'react';
+import { api } from '../services/api';
 import TherapistCard from '../components/TherapistCard';
 import Footer from '../components/Footer';
 
 export default function Home() {
+  const [therapists, setTherapists] = useState([]);
+  const [loadingTherapists, setLoadingTherapists] = useState(true);
+
   const [specialty, setSpecialty] = useState('');
   const [priceRange, setPriceRange] = useState('');
   const [language, setLanguage] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    api
+      .getTherapists()
+      .then((data) => { if (active) setTherapists(data); })
+      .catch(() => { if (active) setTherapists([]); })
+      .finally(() => { if (active) setLoadingTherapists(false); });
+    return () => { active = false; };
+  }, []);
 
   const filtered = therapists.filter((t) => {
     if (specialty && specialty !== 'all' && !t.specializations.includes(specialty)) return false;
@@ -132,7 +145,11 @@ export default function Home() {
           </div>
           <Link to="/therapists" className="text-brand text-sm font-semibold hover:underline">View All →</Link>
         </div>
-        {filtered.length === 0 ? (
+        {loadingTherapists ? (
+          <div className="text-center py-16 text-gray-400">
+            <p>Loading therapists…</p>
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="text-center py-16 text-gray-400">
             <p className="text-4xl mb-3">🔍</p>
             <p>No therapists match your current filters.</p>

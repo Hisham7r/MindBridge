@@ -2,17 +2,31 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useRole } from '../context/RoleContext';
 
+const DASHBOARD_BY_ROLE = {
+  admin: '/dashboard/admin',
+  therapist: '/dashboard/therapist',
+  patient: '/dashboard/patient',
+};
+
 export default function Login() {
   const [form, setForm] = useState({ email: '', password: '' });
-  const { setRole } = useRole();
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const { login } = useRole();
   const navigate = useNavigate();
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
-    // Demo: route based on email keyword
-    if (form.email.includes('admin')) { setRole('admin'); navigate('/dashboard/admin'); }
-    else if (form.email.includes('therapist')) { setRole('therapist'); navigate('/dashboard/therapist'); }
-    else { setRole('patient'); navigate('/dashboard/patient'); }
+    setError('');
+    setSubmitting(true);
+    try {
+      const uiRole = await login(form.email, form.password);
+      navigate(DASHBOARD_BY_ROLE[uiRole] || '/');
+    } catch (err) {
+      setError(err.message || 'Login failed. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -33,9 +47,12 @@ export default function Login() {
         <div className="w-full max-w-md">
           <h1 className="text-3xl font-bold text-gray-900">Sign in</h1>
           <p className="text-gray-500 mt-2">Enter your credentials to continue.</p>
-          <p className="text-xs text-gray-400 mt-1 bg-blue-50 px-3 py-2 rounded-lg">
-              Demo tip: use <strong>admin@</strong>, <strong>therapist@</strong>, or any email for patient view.
-          </p>
+
+          {error && (
+            <p className="text-sm text-red-600 mt-3 bg-red-50 border border-red-100 px-3 py-2 rounded-lg">
+              {error}
+            </p>
+          )}
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <div>
@@ -57,7 +74,9 @@ export default function Login() {
                 className="input-field" required
               />
             </div>
-            <button type="submit" className="btn-primary w-full py-4 text-base">Sign In →</button>
+            <button type="submit" disabled={submitting} className="btn-primary w-full py-4 text-base disabled:opacity-60 disabled:cursor-not-allowed">
+              {submitting ? 'Signing in…' : 'Sign In →'}
+            </button>
           </form>
 
           <p className="text-center text-sm text-gray-500 mt-6">

@@ -1,37 +1,133 @@
-import {
-  therapists,
-  patientSessions,
-  pastSessions,
-  therapistSchedule,
-  adminPayments,
-  adminTherapists,
-} from '../data/mockData';
+// Real HTTP client for the MindBridge backend.
+// Replaces the former mock. Centralises base URL, JWT attachment, and error
+// normalisation so pages can call typed-ish methods without touching fetch.
 
-const BASE_URL = import.meta.env.VITE_API_URL || '';
+import { mapTherapist, uiTrackToApi } from './adapters';
+
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+const TOKEN_KEY = 'mindbridge_token';
+
+// ── Token persistence (localStorage is the single source of truth) ───────────
+export function getToken() {
+  return localStorage.getItem(TOKEN_KEY);
+}
+export function setToken(token) {
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+}
+export function clearToken() {
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+// ── Core request helper ──────────────────────────────────────────────────────
+async function request(path, { method = 'GET', body, auth = true } = {}) {
+  const headers = {};
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+
+  const token = getToken();
+  if (auth && token) headers['Authorization'] = `Bearer ${token}`;
+
+  let res;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    // Network/connection failure (server down, CORS, offline).
+    const error = new Error('Cannot reach the server. Please try again.');
+    error.status = 0;
+    throw error;
+  }
+
+  let data = null;
+  try {
+    data = await res.json();
+  } catch {
+    /* response had no JSON body */
+  }
+
+  if (!res.ok) {
+    const message = data?.error || data?.message || `Request failed (${res.status})`;
+    const error = new Error(message);
+    error.status = res.status;
+    error.details = data?.details;
+    throw error;
+  }
+
+  return data;
+}
 
 export const api = {
-  // Auth
-  login: async (email, password) => Promise.resolve({ role: 'patient', user: {} }),
-  register: async (name, email, password, role) => Promise.resolve({ role, user: {} }),
-  getMe: async () => Promise.resolve(null),
+  // ── Auth ──
+  login: (email, password) =>
+    request('/auth/login', { method: 'POST', body: { email, password }, auth: false }),
+  register: (name, email, password, role) =>
+    request('/auth/register', { method: 'POST', body: { name, email, password, role }, auth: false }),
+  getMe: () => request('/auth/me'),
+  logout: () => request('/auth/logout', { method: 'POST' }),
 
-  // Therapists
-  getTherapists: async (filters = {}) => Promise.resolve(therapists),
-  getTherapist: async (id) => Promise.resolve(therapists.find(t => t.id === parseInt(id)) || null),
+  // ── Therapists (public) ──
+  getTherapists: async (filters = {}) => {
+    const qs = new URLSearchParams();
+    if (filters.track) qs.set('track', uiTrackToApi(filters.track));
+    if (filters.specialization) qs.set('specialization', filters.specialization);
+    if (filters.language) qs.set('language', filters.language);
+    if (filters.minFee) qs.set('minFee', filters.minFee);
+    if (filters.maxFee) qs.set('maxFee', filters.maxFee);
+    const q = qs.toString();
+    const data = await request(`/therapists${q ? `?${q}` : ''}`, { auth: false });
+    return (data.therapists || []).map(mapTherapist);
+  },
+  getTherapist: async (id) => {
+    const data = await request(`/therapists/${id}`, { auth: false });
+    return mapTherapist(data.therapist);
+  },
   getTherapistSlots: async (id, date) => {
-    const t = therapists.find(th => th.id === parseInt(id));
-    return Promise.resolve(t?.availableSlots?.[date] || []);
+    const q = date ? `?date=${encodeURIComponent(date)}` : '';
+    const data = await request(`/therapists/${id}/slots${q}`, { auth: false });
+    return data.slots || [];
   },
 
-  // Sessions
-  getPatientSessions: async () => Promise.resolve({ upcoming: patientSessions, past: pastSessions }),
-  getTherapistSchedule: async () => Promise.resolve(therapistSchedule),
+  // ── Sessions ──
+  createSession: (payload) => request('/sessions', { method: 'POST', body: payload }),
+  getMySessions: async () => {
+    const data = await request('/sessions/my');
+    return data.sessions || [];
+  },
+  getSession: async (id) => {
+    const data = await request(`/sessions/${id}`);
+    return data.session;
+  },
+  updateSessionStatus: (id, status) =>
+    request(`/sessions/${id}/status`, { method: 'PATCH', body: { status } }),
 
-  // Payments
-  submitPayment: async (payload) => Promise.resolve({ success: true }),
-  getAdminPayments: async () => Promise.resolve(adminPayments),
-  approvePayment: async (id) => Promise.resolve({ success: true }),
+  // ── Payments ──
+  submitPayment: (payload) => request('/payments', { method: 'POST', body: payload }),
+  getPayment: async (id) => {
+    const data = await request(`/payments/${id}`);
+    return data.payment;
+  },
+  approvePayment: (id) => request(`/payments/${id}/approve`, { method: 'PATCH' }),
+  rejectPayment: (id) => request(`/payments/${id}/reject`, { method: 'PATCH' }),
 
-  // Admin
-  getAdminTherapists: async () => Promise.resolve(adminTherapists),
+  // ── Admin ──
+  getAdminStats: async () => {
+    const data = await request('/admin/stats');
+    return data.stats;
+  },
+  getAdminUsers: async () => {
+    const data = await request('/admin/users');
+    return data.users || [];
+  },
+  getAdminSessions: async () => {
+    const data = await request('/admin/sessions');
+    return data.sessions || [];
+  },
+  getAdminPayments: async (status) => {
+    const q = status ? `?status=${encodeURIComponent(status)}` : '';
+    const data = await request(`/admin/payments${q}`);
+    return data.payments || [];
+  },
 };
