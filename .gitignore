@@ -40,3 +40,7 @@ Thumbs.db
 # ── Claude Code (keep shared config, ignore personal/local) ──────────────────
 .claude/settings.local.json
 CLAUDE.md
+
+# ── Personal learning notes (not project artifacts) ──────────────────────────
+PHASE3_*.md
+README_PHASE3.txt
