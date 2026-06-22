@@ -1,13 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { adminPayments, adminTherapists } from '../data/mockData';
+import { adminTherapists } from '../data/mockData';
+import { api } from '../services/api';
 import { useRole } from '../context/RoleContext';
 import { getNavByRole, shouldShowBookSessionButton } from '../config/sidebarConfig.jsx';
 
 function SidebarLink({ icon, label, active, onClick, purpose, isSubItem = false }) {
   return (
-    <button 
-      onClick={onClick} 
+    <button
+      onClick={onClick}
       className={`${active ? 'sidebar-link-active' : 'sidebar-link'} w-full text-left transition-all ${isSubItem ? 'pl-8 text-sm' : ''}`}
       title={purpose}
     >
@@ -18,25 +19,82 @@ function SidebarLink({ icon, label, active, onClick, purpose, isSubItem = false 
 }
 
 export default function AdminConsole() {
-  const { setRole, role, currentUser } = useRole();
+  const { logout, role, currentUser } = useRole();
   const navigate = useNavigate();
   const [activeSection, setActiveSection] = useState('overview');
   const [activeSubSection, setActiveSubSection] = useState(null);
-  const [payments, setPayments] = useState(adminPayments);
+
+  const [stats, setStats] = useState(null);
+  const [users, setUsers] = useState([]);
+  const [payments, setPayments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busyPayId, setBusyPayId] = useState(null);
+  const [payError, setPayError] = useState('');
+
   const [startTime, setStartTime] = useState('08:00');
   const [endTime, setEndTime] = useState('22:00');
   const [hoursSaved, setHoursSaved] = useState(false);
-  
+
   const navItems = getNavByRole(role);
 
-  function approvePayment(id) {
-    setPayments(p => p.map(pay => pay.id === id ? { ...pay, status: 'approved' } : pay));
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      api.getAdminStats().catch(() => null),
+      api.getAdminPayments().catch(() => []),
+      api.getAdminUsers().catch(() => []),
+    ]).then(([s, pays, us]) => {
+      if (!active) return;
+      setStats(s);
+      setPayments((pays || []).map(p => ({
+        id: p.id,
+        user: p.patient?.name || 'Unknown',
+        email: p.patient?.email || '',
+        amount: `PKR ${Number(p.totalPkr || 0).toLocaleString()}`,
+        status: String(p.status || '').toLowerCase(),
+      })));
+      setUsers(us || []);
+    }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
+
+  async function approvePayment(id) {
+    setBusyPayId(id); setPayError('');
+    try {
+      await api.approvePayment(id);
+      setPayments(p => p.map(pay => (pay.id === id ? { ...pay, status: 'approved' } : pay)));
+    } catch (e) {
+      setPayError(e.message || 'Could not approve payment.');
+    } finally {
+      setBusyPayId(null);
+    }
   }
-  function rejectPayment(id) {
-    setPayments(p => p.map(pay => pay.id === id ? { ...pay, status: 'rejected' } : pay));
+  async function rejectPayment(id) {
+    setBusyPayId(id); setPayError('');
+    try {
+      await api.rejectPayment(id);
+      setPayments(p => p.map(pay => (pay.id === id ? { ...pay, status: 'rejected' } : pay)));
+    } catch (e) {
+      setPayError(e.message || 'Could not reject payment.');
+    } finally {
+      setBusyPayId(null);
+    }
   }
 
   const pending = payments.filter(p => p.status === 'pending');
+
+  // ── Real stat-card values ─────────────────────────────────────────────────
+  const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
+  const newThisWeek = users.filter(u => u.createdAt && new Date(u.createdAt) >= weekAgo).length;
+  const patients = stats?.users?.patients ?? 0;
+  const revenuePkr = stats?.revenuePkr ?? 0;
+
+  const statCards = [
+    { label: 'ACTIVE PATIENTS', value: loading ? '…' : String(patients), change: 'Registered patients', icon: '👥', positive: true },
+    { label: 'NEW SIGNUPS', value: loading ? '…' : String(newThisWeek), change: 'New this week', icon: '📈', positive: true },
+    { label: 'RETENTION RATE', value: '—', change: 'Not tracked yet', icon: '📊', positive: null },
+    { label: 'REVENUE', value: loading ? '…' : `PKR ${revenuePkr.toLocaleString()}`, change: 'From approved payments', icon: '💰', positive: true },
+  ];
 
   return (
     <div className="flex min-h-screen bg-bg">
@@ -47,11 +105,11 @@ export default function AdminConsole() {
         </div>
         <div className="flex items-center gap-3 mb-6">
           <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden border-2 border-white shadow">
-            <span className="font-bold text-gray-600 text-sm">AD</span>
+            <span className="font-bold text-gray-600 text-sm">{currentUser?.initials || 'AD'}</span>
           </div>
           <div>
             <p className="text-xs text-gray-400">Welcome back</p>
-            <p className="text-sm font-bold text-gray-800">Admin</p>
+            <p className="text-sm font-bold text-gray-800">{currentUser?.name || 'Admin'}</p>
             <p className="text-xs text-gray-400">Your mental sanctuary</p>
           </div>
         </div>
@@ -59,11 +117,11 @@ export default function AdminConsole() {
         <nav className="space-y-1 flex-1">
           {navItems.map((item) => (
             <div key={item.section}>
-              <SidebarLink 
-                icon={item.icon} 
-                label={item.label} 
+              <SidebarLink
+                icon={item.icon}
+                label={item.label}
                 purpose={item.purpose}
-                active={activeSection === item.section} 
+                active={activeSection === item.section}
                 onClick={() => {
                   setActiveSection(item.section);
                   setActiveSubSection(null);
@@ -97,7 +155,7 @@ export default function AdminConsole() {
             </Link>
           )}
           <button
-            onClick={() => { setRole('guest'); navigate('/'); }}
+            onClick={() => { logout(); navigate('/'); }}
             className="flex items-center gap-2 text-sm text-gray-400 hover:text-red-500 transition-colors w-full"
           >
             <span>↪</span> Logout
@@ -128,20 +186,15 @@ export default function AdminConsole() {
           <>
         {/* Stats */}
         <div className="grid grid-cols-4 gap-5 mb-8">
-          {[
-            { label: 'ACTIVE PATIENTS', value: '8,342', change: 'Users in last 30 days', icon: '👥', positive: true },
-            { label: 'NEW SIGNUPS', value: '342', change: 'Growth this week', icon: '📈', positive: true },
-            { label: 'RETENTION RATE', value: '76%', change: 'Month-over-month', icon: '📊', positive: true },
-            { label: 'REVENUE', value: '$42.8k', change: '-2% vs last month', icon: '💰', positive: false },
-          ].map((s) => (
+          {statCards.map((s) => (
             <div key={s.label} className="card">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">{s.label}</p>
                 <div className="w-10 h-10 bg-gray-50 rounded-full flex items-center justify-center text-xl">{s.icon}</div>
               </div>
               <p className="text-3xl font-bold text-gray-900 mt-3">{s.value}</p>
-              <p className={`text-xs mt-1 font-medium ${s.positive ? 'text-green-600' : 'text-red-500'}`}>
-                {s.positive ? '↑' : '↘'} {s.change}
+              <p className={`text-xs mt-1 font-medium ${s.positive === null ? 'text-gray-400' : s.positive ? 'text-green-600' : 'text-red-500'}`}>
+                {s.positive === null ? s.change : `${s.positive ? '↑' : '↘'} ${s.change}`}
               </p>
             </div>
           ))}
@@ -160,6 +213,8 @@ export default function AdminConsole() {
               )}
             </div>
 
+            {payError && <p className="text-xs text-red-500 mt-2">{payError}</p>}
+
             <div className="mt-4">
               <div className="grid grid-cols-3 text-xs font-semibold text-gray-400 uppercase tracking-wide px-2 pb-2 border-b border-gray-50">
                 <span>User</span>
@@ -167,7 +222,11 @@ export default function AdminConsole() {
                 <span className="text-right">Proof</span>
               </div>
               <div className="divide-y divide-gray-50 mt-2">
-                {payments.map(pay => (
+                {loading ? (
+                  <p className="text-sm text-gray-400 py-3 px-2">Loading…</p>
+                ) : payments.length === 0 ? (
+                  <p className="text-sm text-gray-400 py-3 px-2">No payments yet.</p>
+                ) : payments.map(pay => (
                   <div key={pay.id} className={`grid grid-cols-3 items-center py-3 px-2 rounded-xl transition-colors ${pay.status === 'approved' ? 'bg-green-50' : pay.status === 'rejected' ? 'bg-red-50' : 'hover:bg-gray-50'}`}>
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 text-xs font-bold shrink-0">
@@ -185,8 +244,8 @@ export default function AdminConsole() {
                           <button className="text-brand text-xs font-semibold flex items-center gap-1 hover:underline">
                             🖼 View Screenshot
                           </button>
-                          <button onClick={() => approvePayment(pay.id)} className="text-green-600 hover:text-green-700 text-xl transition-colors">✓</button>
-                          <button onClick={() => rejectPayment(pay.id)} className="text-red-400 hover:text-red-600 text-xl transition-colors">✗</button>
+                          <button onClick={() => approvePayment(pay.id)} disabled={busyPayId === pay.id} className="text-green-600 hover:text-green-700 text-xl transition-colors disabled:opacity-40">✓</button>
+                          <button onClick={() => rejectPayment(pay.id)} disabled={busyPayId === pay.id} className="text-red-400 hover:text-red-600 text-xl transition-colors disabled:opacity-40">✗</button>
                         </>
                       ) : (
                         <span className={`badge ${pay.status === 'approved' ? 'badge-green' : 'badge-red'} capitalize`}>{pay.status}</span>
@@ -302,8 +361,8 @@ export default function AdminConsole() {
               {activeSubSection === 'therapists' ? 'Therapist Management' : 'Patient Management'}
             </h2>
             <p className="text-xs text-gray-400 mb-6">
-              {activeSubSection === 'therapists' 
-                ? 'View, edit, and manage all therapist profiles and performance.' 
+              {activeSubSection === 'therapists'
+                ? 'View, edit, and manage all therapist profiles and performance.'
                 : 'View, search, and support patient accounts.'}
             </p>
 
@@ -345,9 +404,9 @@ export default function AdminConsole() {
             ) : (
               <div className="bg-gray-50 rounded-lg p-8 text-center">
                 <p className="text-gray-600 text-sm mb-4">🔍 Searchable patient database</p>
-                <input 
-                  type="text" 
-                  placeholder="Search patients by name, email, or ID..." 
+                <input
+                  type="text"
+                  placeholder="Search patients by name, email, or ID..."
                   className="input-field w-full max-w-md mb-4"
                 />
                 <p className="text-xs text-gray-400">Patient management dashboard coming soon</p>
@@ -370,6 +429,8 @@ export default function AdminConsole() {
                 )}
               </div>
 
+              {payError && <p className="text-xs text-red-500 mt-2">{payError}</p>}
+
               <div className="mt-4">
                 <div className="grid grid-cols-3 text-xs font-semibold text-gray-400 uppercase tracking-wide px-2 pb-2 border-b border-gray-50">
                   <span>Therapist</span>
@@ -377,7 +438,11 @@ export default function AdminConsole() {
                   <span className="text-right">Bank Proof</span>
                 </div>
                 <div className="divide-y divide-gray-50 mt-2">
-                  {payments.map(pay => (
+                  {loading ? (
+                    <p className="text-sm text-gray-400 py-3 px-2">Loading…</p>
+                  ) : payments.length === 0 ? (
+                    <p className="text-sm text-gray-400 py-3 px-2">No payments yet.</p>
+                  ) : payments.map(pay => (
                     <div key={pay.id} className={`grid grid-cols-3 items-center py-3 px-2 rounded-xl transition-colors ${pay.status === 'approved' ? 'bg-green-50' : pay.status === 'rejected' ? 'bg-red-50' : 'hover:bg-gray-50'}`}>
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 text-xs font-bold shrink-0">
@@ -395,8 +460,8 @@ export default function AdminConsole() {
                             <button className="text-brand text-xs font-semibold flex items-center gap-1 hover:underline">
                               🖼 View Proof
                             </button>
-                            <button onClick={() => approvePayment(pay.id)} className="text-green-600 hover:text-green-700 text-xl transition-colors" title="Approve">✓</button>
-                            <button onClick={() => rejectPayment(pay.id)} className="text-red-400 hover:text-red-600 text-xl transition-colors" title="Reject">✗</button>
+                            <button onClick={() => approvePayment(pay.id)} disabled={busyPayId === pay.id} className="text-green-600 hover:text-green-700 text-xl transition-colors disabled:opacity-40" title="Approve">✓</button>
+                            <button onClick={() => rejectPayment(pay.id)} disabled={busyPayId === pay.id} className="text-red-400 hover:text-red-600 text-xl transition-colors disabled:opacity-40" title="Reject">✗</button>
                           </>
                         ) : (
                           <span className={`badge ${pay.status === 'approved' ? 'badge-green' : 'badge-red'} capitalize`}>{pay.status}</span>
@@ -415,13 +480,13 @@ export default function AdminConsole() {
           <div className="space-y-6">
             <div className="card">
               <h2 className="font-bold text-gray-800 mb-4">Global Configuration</h2>
-              
+
               <div className="space-y-6">
                 {/* Operation Hours */}
                 <div>
                   <h3 className="text-sm font-bold text-gray-800 mb-3">Operation Hours</h3>
                   <p className="text-xs text-gray-400 mb-4">Set the global timeframe for active therapy sessions.</p>
-                  
+
                   <div className="space-y-4">
                     <div>
                       <div className="flex items-center justify-between mb-1">
