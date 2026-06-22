@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { patientSessions, pastSessions } from '../data/mockData';
+import { api } from '../services/api';
 import { useRole } from '../context/RoleContext';
 import SidebarLink from '../components/SidebarLink';
 
@@ -11,56 +11,109 @@ const moodColors = {
   red: 'badge-red',
 };
 
+// Backend sessions don't carry an avatar colour, so derive a stable one per
+// therapist id from a fixed palette (keeps avatars colourful + consistent).
+const AVATAR_COLORS = ['#6366F1', '#10B981', '#F59E0B', '#EC4899', '#3B82F6', '#8B5CF6', '#22C55E'];
+function colorForId(id) {
+  let h = 0;
+  for (const ch of String(id || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+
+const trackLabel = (track) => (track === 'CAREER' ? 'Career Guidance' : 'Mental Health Therapy');
+const fmtDate = (dt) => (dt ? new Date(dt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—');
+const fmtTime = (dt) => (dt ? new Date(dt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '—');
+
 export default function PatientDashboard() {
-  const { currentUser, role, setRole, setCurrentUser } = useRole();
-  const [activeSection, setActiveSection] = useState('overview');
+  const { currentUser, logout, setCurrentUser } = useRole();
   const navigate = useNavigate();
+  const [activeSection, setActiveSection] = useState('overview');
   const [scheduleTab, setScheduleTab] = useState('upcoming');
+
+  const [sessions, setSessions] = useState([]);
+  const [loadingSessions, setLoadingSessions] = useState(true);
+
   const [profileForm, setProfileForm] = useState({
     name: currentUser.name,
     email: currentUser.email,
-    phone: '+92 300 000 0000',
-    language: 'English',
+    phone: currentUser.phone || '',
+    language: currentUser.language || 'English',
     notifications: true,
     sessionReminders: true,
   });
   const [profileSaved, setProfileSaved] = useState(false);
 
-  const patientPayments = [ 
-    {
-      id: 1,
-      therapist: 'Dr. Sarah Jenkins',
-      therapistInitials: 'SJ',
-      therapistColor: '#22C55E',
-      date: '2026-04-10',
-      amount: 'PKR 4,750',
-      txnId: 'TXN-8821934',
-      status: 'approved',
-      sessionType: 'Mental Health Therapy',
-    },
-    {
-      id: 2,
-      therapist: 'Career Counseling',
-      therapistInitials: 'CC',
-      therapistColor: '#3B82F6',
-      date: '2026-04-08',
-      amount: 'PKR 3,450',
-      txnId: 'TXN-7743821',
-      status: 'pending',
-      sessionType: 'Career Guidance',
-    },
-    {
-      id: 3,
-      therapist: 'Dr. Alizeh Shah',
-      therapistInitials: 'AS',
-      therapistColor: '#8B5CF6',
-      date: '2026-03-29',
-      amount: 'PKR 5,750',
-      txnId: 'TXN-6612047',
-      status: 'approved',
-      sessionType: 'Trauma Therapy',
-    },
-  ];
+  useEffect(() => {
+    let active = true;
+    api.getMySessions()
+      .then((data) => { if (active) setSessions(data); })
+      .catch(() => { if (active) setSessions([]); })
+      .finally(() => { if (active) setLoadingSessions(false); });
+    return () => { active = false; };
+  }, []);
+
+  // ── Derive views from real session data ──────────────────────────────────
+  const now = new Date();
+  const isPast = (s) => {
+    if (['COMPLETED', 'CANCELLED'].includes(s.status)) return true;
+    const dt = s.slot?.datetime ? new Date(s.slot.datetime) : null;
+    return dt ? dt < now : false;
+  };
+
+  const upcomingRaw = sessions
+    .filter((s) => !isPast(s))
+    .sort((a, b) => new Date(a.slot?.datetime || 0) - new Date(b.slot?.datetime || 0));
+  const pastRaw = sessions
+    .filter(isPast)
+    .sort((a, b) => new Date(b.slot?.datetime || 0) - new Date(a.slot?.datetime || 0));
+
+  const upcomingSessions = upcomingRaw.map((s) => ({
+    id: s.id,
+    therapist: s.therapist?.name || 'Therapist',
+    therapistInitials: s.therapist?.initials || '–',
+    therapistColor: colorForId(s.therapist?.id),
+    type: trackLabel(s.therapist?.track),
+    date: fmtDate(s.slot?.datetime),
+    time: fmtTime(s.slot?.datetime),
+    status: s.status,
+    zoomLink: s.zoomLink,
+    sessionNumber: s.sessionNumber,
+  }));
+
+  const pastList = pastRaw.map((s) => ({
+    id: s.id,
+    therapist: s.therapist?.name || 'Therapist',
+    initials: s.therapist?.initials || '–',
+    color: colorForId(s.therapist?.id),
+    date: fmtDate(s.slot?.datetime),
+    duration: `${s.durationMins || 60} mins`,
+    mood: null,        // no mood-tracking feature in backend yet
+    moodColor: 'gray',
+  }));
+
+  const paymentsList = sessions
+    .filter((s) => s.payment)
+    .sort((a, b) => new Date(b.slot?.datetime || b.createdAt || 0) - new Date(a.slot?.datetime || a.createdAt || 0))
+    .map((s) => ({
+      id: s.payment.id,
+      therapist: s.therapist?.name || 'Therapist',
+      therapistInitials: s.therapist?.initials || '–',
+      therapistColor: colorForId(s.therapist?.id),
+      sessionType: trackLabel(s.therapist?.track),
+      date: fmtDate(s.slot?.datetime || s.createdAt),
+      amount: `PKR ${Number(s.payment.totalPkr || 0).toLocaleString()}`,
+      ref: `#${String(s.payment.id).slice(0, 8)}`,
+      status: String(s.payment.status || '').toLowerCase(),
+    }));
+
+  // Payment summary stats (all computed from real data)
+  const approvedCount = paymentsList.filter((p) => p.status === 'approved').length;
+  const pendingPaymentsCount = paymentsList.filter((p) => p.status === 'pending').length;
+  const totalPaid = sessions
+    .filter((s) => s.payment && String(s.payment.status).toUpperCase() === 'APPROVED')
+    .reduce((sum, s) => sum + Number(s.payment.totalPkr || 0), 0);
+  const nextSession = upcomingRaw[0] || null;
+  const nextFee = nextSession ? Number(nextSession.therapist?.feePkr || 0) + 250 : 0;
 
   const sectionMeta = {
     overview: { title: 'Patient Dashboard', subtitle: 'Manage your healing journey and therapist sessions.' },
@@ -161,12 +214,12 @@ export default function PatientDashboard() {
 
         <div className="mt-4 space-y-3">
 
-          <Link to="/book/1" className="btn-primary w-full text-center py-2.5 text-sm block">
+          <Link to="/therapists" className="btn-primary w-full text-center py-2.5 text-sm block">
             Book Session
           </Link>
 
           <button
-            onClick={() => { setRole('guest'); navigate('/'); }}
+            onClick={() => { logout(); navigate('/'); }}
             className="flex items-center gap-2 text-sm text-gray-400 hover:text-red-500 transition-colors w-full"
           >
             <span>↪</span> Logout
@@ -216,31 +269,39 @@ export default function PatientDashboard() {
                   <h2 className="font-bold text-gray-800 text-lg">Upcoming Sessions</h2>
                   <button className="text-brand text-sm font-semibold hover:underline">View All</button>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {patientSessions.map(session => (
-                    <div key={session.id} className="card flex items-center gap-4">
-                      <div
-                        className="w-14 h-14 rounded-xl flex items-center justify-center text-white font-bold text-base shrink-0"
-                        style={{ backgroundColor: session.therapistColor }}
-                      >
-                        {session.therapistInitials}
+                {loadingSessions ? (
+                  <p className="text-sm text-gray-400">Loading sessions…</p>
+                ) : upcomingSessions.length === 0 ? (
+                  <div className="card text-center text-gray-400 py-8">
+                    No upcoming sessions. <Link to="/therapists" className="text-brand font-semibold hover:underline">Book one →</Link>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {upcomingSessions.map(session => (
+                      <div key={session.id} className="card flex items-center gap-4">
+                        <div
+                          className="w-14 h-14 rounded-xl flex items-center justify-center text-white font-bold text-base shrink-0"
+                          style={{ backgroundColor: session.therapistColor }}
+                        >
+                          {session.therapistInitials}
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-bold text-gray-800">{session.therapist}</p>
+                          <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
+                            ⏰ {session.status === 'upcoming' ? `Tomorrow, ${session.time}` : session.date + ' • ' + session.time}
+                          </p>
+                        </div>
+                        {session.zoomLink ? (
+                          <a href={session.zoomLink} target="_blank" rel="noreferrer" className="btn-primary text-xs py-2 px-4 whitespace-nowrap">
+                            📹 Join Session
+                          </a>
+                        ) : (
+                          <button className="btn-outline text-xs py-2 px-3">Reschedule</button>
+                        )}
                       </div>
-                      <div className="flex-1">
-                        <p className="font-bold text-gray-800">{session.therapist}</p>
-                        <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
-                          ⏰ {session.status === 'upcoming' ? `Tomorrow, ${session.time}` : session.date + ' • ' + session.time}
-                        </p>
-                      </div>
-                      {session.zoomLink ? (
-                        <a href={session.zoomLink} target="_blank" rel="noreferrer" className="btn-primary text-xs py-2 px-4 whitespace-nowrap">
-                          📹 Join Session
-                        </a>
-                      ) : (
-                        <button className="btn-outline text-xs py-2 px-3">Reschedule</button>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </section>
 
               {/* Past Sessions */}
@@ -264,7 +325,11 @@ export default function PatientDashboard() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {pastSessions.map(s => (
+                      {loadingSessions ? (
+                        <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-400 text-sm">Loading…</td></tr>
+                      ) : pastList.length === 0 ? (
+                        <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-400 text-sm">No past sessions yet.</td></tr>
+                      ) : pastList.map(s => (
                         <tr key={s.id} className="hover:bg-gray-50 transition-colors">
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-3">
@@ -277,9 +342,13 @@ export default function PatientDashboard() {
                           <td className="px-4 py-4 text-sm text-gray-600">{s.date}</td>
                           <td className="px-4 py-4 text-sm text-gray-600">{s.duration}</td>
                           <td className="px-4 py-4">
-                            <span className={`badge ${moodColors[s.moodColor]}`}>
-                              {s.moodColor === 'green' ? '😊' : s.moodColor === 'blue' ? '⚡' : '😴'} {s.mood}
-                            </span>
+                            {s.mood ? (
+                              <span className={`badge ${moodColors[s.moodColor]}`}>
+                                {s.moodColor === 'green' ? '😊' : s.moodColor === 'blue' ? '⚡' : '😴'} {s.mood}
+                              </span>
+                            ) : (
+                              <span className="badge badge-gray">—</span>
+                            )}
                           </td>
                           <td className="px-4 py-4">
                             <button className="text-brand text-sm font-semibold hover:underline">Notes</button>
@@ -320,34 +389,42 @@ export default function PatientDashboard() {
               </div>
 
               {scheduleTab === 'upcoming' && (
-                <div className="space-y-4">
-                  {patientSessions.map(session => (
-                    <div key={session.id} className="card flex items-center gap-4">
-                      <div
-                        className="w-14 h-14 rounded-xl flex items-center justify-center text-white font-bold text-base shrink-0"
-                        style={{ backgroundColor: session.therapistColor }}
-                      >
-                        {session.therapistInitials}
+                loadingSessions ? (
+                  <p className="text-sm text-gray-400">Loading sessions…</p>
+                ) : upcomingSessions.length === 0 ? (
+                  <div className="card text-center text-gray-400 py-8">
+                    No upcoming sessions. <Link to="/therapists" className="text-brand font-semibold hover:underline">Book one →</Link>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {upcomingSessions.map(session => (
+                      <div key={session.id} className="card flex items-center gap-4">
+                        <div
+                          className="w-14 h-14 rounded-xl flex items-center justify-center text-white font-bold text-base shrink-0"
+                          style={{ backgroundColor: session.therapistColor }}
+                        >
+                          {session.therapistInitials}
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-bold text-gray-800">{session.therapist}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">{session.type}</p>
+                          <p className="text-xs text-gray-500 mt-1">📅 {session.date} at {session.time}</p>
+                          <p className="text-xs text-brand mt-1">Session #{session.sessionNumber}</p>
+                        </div>
+                        <div className="flex flex-col gap-2 shrink-0">
+                          {session.zoomLink ? (
+                            <a href={session.zoomLink} target="_blank" rel="noreferrer" className="btn-primary text-xs py-2 px-3 text-center">
+                              📹 Join
+                            </a>
+                          ) : (
+                            <span className="badge badge-gray text-xs">Zoom link pending</span>
+                          )}
+                          <button className="btn-outline text-xs py-1.5 px-3">Cancel</button>
+                        </div>
                       </div>
-                      <div className="flex-1">
-                        <p className="font-bold text-gray-800">{session.therapist}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">{session.type}</p>
-                        <p className="text-xs text-gray-500 mt-1">📅 {session.date} at {session.time}</p>
-                        <p className="text-xs text-brand mt-1">Session #{session.sessionNumber}</p>
-                      </div>
-                      <div className="flex flex-col gap-2 shrink-0">
-                        {session.zoomLink ? (
-                          <a href={session.zoomLink} target="_blank" rel="noreferrer" className="btn-primary text-xs py-2 px-3 text-center">
-                            📹 Join
-                          </a>
-                        ) : (
-                          <span className="badge badge-gray text-xs">Zoom link pending</span>
-                        )}
-                        <button className="btn-outline text-xs py-1.5 px-3">Cancel</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )
               )}
 
               {scheduleTab === 'past' && (
@@ -363,7 +440,11 @@ export default function PatientDashboard() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {pastSessions.map(s => (
+                      {loadingSessions ? (
+                        <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-400 text-sm">Loading…</td></tr>
+                      ) : pastList.length === 0 ? (
+                        <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-400 text-sm">No past sessions yet.</td></tr>
+                      ) : pastList.map(s => (
                         <tr key={s.id} className="hover:bg-gray-50 transition-colors">
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-3">
@@ -376,9 +457,13 @@ export default function PatientDashboard() {
                           <td className="px-4 py-4 text-sm text-gray-600">{s.date}</td>
                           <td className="px-4 py-4 text-sm text-gray-600">{s.duration}</td>
                           <td className="px-4 py-4">
-                            <span className={`badge ${moodColors[s.moodColor]}`}>
-                              {s.moodColor === 'green' ? '😊' : s.moodColor === 'blue' ? '⚡' : '😴'} {s.mood}
-                            </span>
+                            {s.mood ? (
+                              <span className={`badge ${moodColors[s.moodColor]}`}>
+                                {s.moodColor === 'green' ? '😊' : s.moodColor === 'blue' ? '⚡' : '😴'} {s.mood}
+                              </span>
+                            ) : (
+                              <span className="badge badge-gray">—</span>
+                            )}
                           </td>
                           <td className="px-4 py-4">
                             <button className="text-brand text-sm font-semibold hover:underline">Notes</button>
@@ -398,18 +483,18 @@ export default function PatientDashboard() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
                 <div className="card">
                   <p className="text-xs text-gray-400 font-semibold uppercase tracking-widest">Total Paid</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-2">PKR 10,500</p>
-                  <p className="text-xs text-gray-500 mt-1">2 approved sessions</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-2">PKR {totalPaid.toLocaleString()}</p>
+                  <p className="text-xs text-gray-500 mt-1">{approvedCount} approved session{approvedCount === 1 ? '' : 's'}</p>
                 </div>
                 <div className="card">
                   <p className="text-xs text-gray-400 font-semibold uppercase tracking-widest">Pending</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-2">1 Payment</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-2">{pendingPaymentsCount} Payment{pendingPaymentsCount === 1 ? '' : 's'}</p>
                   <p className="text-xs text-gray-500 mt-1">Awaiting admin review</p>
                 </div>
                 <div className="card">
                   <p className="text-xs text-gray-400 font-semibold uppercase tracking-widest">Next Session Fee</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-2">PKR 3,200</p>
-                  <p className="text-xs text-gray-500 mt-1">Career Counseling, Apr 18</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-2">{nextSession ? `PKR ${nextFee.toLocaleString()}` : '—'}</p>
+                  <p className="text-xs text-gray-500 mt-1">{nextSession ? `${trackLabel(nextSession.therapist?.track)}, ${fmtDate(nextSession.slot?.datetime)}` : 'No upcoming sessions'}</p>
                 </div>
               </div>
 
@@ -420,12 +505,16 @@ export default function PatientDashboard() {
                       <th className="text-left px-6 py-4">Session</th>
                       <th className="text-left px-4 py-4">Date</th>
                       <th className="text-left px-4 py-4">Amount</th>
-                      <th className="text-left px-4 py-4">Txn ID</th>
+                      <th className="text-left px-4 py-4">Reference</th>
                       <th className="text-left px-4 py-4">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {patientPayments.map(p => (
+                    {loadingSessions ? (
+                      <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-400 text-sm">Loading…</td></tr>
+                    ) : paymentsList.length === 0 ? (
+                      <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-400 text-sm">No payments yet.</td></tr>
+                    ) : paymentsList.map(p => (
                       <tr key={p.id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
@@ -443,7 +532,7 @@ export default function PatientDashboard() {
                         </td>
                         <td className="px-4 py-4 text-sm text-gray-600">{p.date}</td>
                         <td className="px-4 py-4 text-sm font-semibold text-gray-800">{p.amount}</td>
-                        <td className="px-4 py-4 text-xs font-mono text-gray-500">{p.txnId}</td>
+                        <td className="px-4 py-4 text-xs font-mono text-gray-500">{p.ref}</td>
                         <td className="px-4 py-4">
                           {p.status === 'approved' && <span className="badge badge-green">✓ Approved</span>}
                           {p.status === 'pending' && <span className="badge bg-yellow-100 text-yellow-700">⏳ Pending Review</span>}
@@ -472,7 +561,7 @@ export default function PatientDashboard() {
                 </div>
                 <div className="card">
                   <p className="text-xs text-gray-400 font-semibold uppercase tracking-widest">Total Sessions</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-2">6</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-2">{sessions.length}</p>
                   <p className="text-xs text-gray-500 mt-1">Since joining MindBridge</p>
                 </div>
                 <div className="card">
@@ -485,18 +574,24 @@ export default function PatientDashboard() {
               <div className="card mb-6">
                 <h3 className="font-bold text-gray-800 mb-4">Recent Mood Log</h3>
                 <div className="space-y-4">
-                  {pastSessions.map((s, idx) => (
+                  {pastList.length === 0 ? (
+                    <p className="text-sm text-gray-400">No sessions logged yet.</p>
+                  ) : pastList.map((s, idx) => (
                     <div key={s.id}>
                       <div className="flex items-center justify-between">
                         <p className="text-xs text-gray-400">{s.date}</p>
                         <div className="flex items-center gap-4 flex-1 ml-4">
                           <p className="text-sm font-medium text-gray-800">{s.therapist}</p>
-                          <span className={`badge ${moodColors[s.moodColor]}`}>
-                            {s.moodColor === 'green' ? '😊' : s.moodColor === 'blue' ? '⚡' : '😴'} {s.mood}
-                          </span>
+                          {s.mood ? (
+                            <span className={`badge ${moodColors[s.moodColor]}`}>
+                              {s.moodColor === 'green' ? '😊' : s.moodColor === 'blue' ? '⚡' : '😴'} {s.mood}
+                            </span>
+                          ) : (
+                            <span className="badge badge-gray">—</span>
+                          )}
                         </div>
                       </div>
-                      {idx < pastSessions.length - 1 && <div className="border-b border-gray-100 mt-4"></div>}
+                      {idx < pastList.length - 1 && <div className="border-b border-gray-100 mt-4"></div>}
                     </div>
                   ))}
                 </div>

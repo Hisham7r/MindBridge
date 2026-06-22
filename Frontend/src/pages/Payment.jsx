@@ -1,25 +1,30 @@
-import { useState, useRef } from 'react';
-import { useSearchParams, useParams, useNavigate } from 'react-router-dom';
+import { useState, useRef, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { api } from '../services/api';
 import Footer from '../components/Footer';
 
 export default function Payment() {
-  const { id } = useParams();
-  const [searchParams] = useSearchParams();
+  const { id: sessionId } = useParams();
   const navigate = useNavigate();
 
-  const therapistName = searchParams.get('therapist') || 'Dr. Sarah Ahmed';
-  const fee = parseInt(searchParams.get('fee') || '4500');
-  const slot = searchParams.get('slot') || '2:00 PM';
-  const date = searchParams.get('date') || '2026-04-14';
-
-  const serviceFee = 250;
-  const total = fee + serviceFee;
-
+  const [session, setSession] = useState(null);
+  const [loadingSession, setLoadingSession] = useState(true);
   const [txnId, setTxnId] = useState('');
   const [file, setFile] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState('');
   const [dragging, setDragging] = useState(false);
   const fileRef = useRef();
+
+  useEffect(() => {
+    let active = true;
+    api.getSession(sessionId)
+      .then(s => { if (active) setSession(s); })
+      .catch(() => { if (active) setSession(null); })
+      .finally(() => { if (active) setLoadingSession(false); });
+    return () => { active = false; };
+  }, [sessionId]);
 
   function handleDrop(e) {
     e.preventDefault();
@@ -28,10 +33,47 @@ export default function Payment() {
     if (f) setFile(f);
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
-    setSubmitted(true);
+    if (!txnId || !file || submitting) return;
+    setSubmitting(true);
+    setError('');
+    try {
+      await api.submitPayment({
+        sessionId,
+        txnId: txnId.trim(),
+        screenshotUrl: file.name,
+      });
+      setSubmitted(true);
+    } catch (err) {
+      setError(err.message || 'Could not submit payment. Please try again.');
+      setSubmitting(false);
+    }
   }
+
+  if (loadingSession) return (
+    <div className="min-h-screen flex items-center justify-center bg-bg">
+      <p className="text-gray-400 text-sm">Loading payment details…</p>
+    </div>
+  );
+
+  if (!session) return (
+    <div className="min-h-screen flex items-center justify-center bg-bg">
+      <p className="text-gray-500">Session not found.</p>
+    </div>
+  );
+
+  const fee = Number(session.therapist?.feePkr ?? 0);
+  const serviceFee = 250;
+  const total = fee + serviceFee;
+  const therapistName = session.therapist?.name || 'Your Therapist';
+  const slotDatetime = session.slot?.datetime;
+  const date = slotDatetime
+    ? new Date(slotDatetime).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+    : '—';
+  const slotTime = slotDatetime
+    ? new Date(slotDatetime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+    : '—';
 
   if (submitted) {
     return (
@@ -42,7 +84,7 @@ export default function Payment() {
           <p className="text-gray-500 mt-2">Your payment is awaiting verification. Sessions are confirmed within 2 hours during working hours.</p>
           <div className="bg-gray-50 rounded-xl p-4 mt-5 text-left space-y-2">
             <p className="text-sm text-gray-600"><span className="text-gray-400">Therapist:</span> <strong>{therapistName}</strong></p>
-            <p className="text-sm text-gray-600"><span className="text-gray-400">Date & Time:</span> <strong>{date} at {slot}</strong></p>
+            <p className="text-sm text-gray-600"><span className="text-gray-400">Date & Time:</span> <strong>{date} at {slotTime}</strong></p>
             <p className="text-sm text-gray-600"><span className="text-gray-400">Amount:</span> <strong className="text-brand">PKR {total.toLocaleString()}</strong></p>
           </div>
           <p className="text-xs text-gray-400 mt-4">You'll receive an SMS confirmation once your payment is approved.</p>
@@ -144,6 +186,11 @@ export default function Payment() {
 
             {/* Upload form */}
             <div className="space-y-4">
+              {error && (
+                <div className="p-3 bg-red-50 rounded-xl border border-red-100 text-red-600 text-sm">
+                  ⚠️ {error}
+                </div>
+              )}
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-sm font-medium text-gray-700">Transaction ID</label>
@@ -188,8 +235,8 @@ export default function Payment() {
                   )}
                 </div>
               </div>
-              <button type="submit" className="btn-primary w-full py-4 text-base">
-                Submit Payment →
+              <button type="submit" disabled={submitting} className="btn-primary w-full py-4 text-base">
+                {submitting ? 'Submitting…' : 'Submit Payment →'}
               </button>
               <p className="text-center text-xs text-gray-400">🔒 Encrypted & Secure Payment</p>
             </div>
