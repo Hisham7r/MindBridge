@@ -96,6 +96,12 @@ export const api = {
     const data = await request('/sessions/my');
     return data.sessions || [];
   },
+  getTherapistSessions: async () => {
+    const data = await request('/sessions/therapist/my');
+    return data.sessions || [];
+  },
+  setSessionZoomLink: (id, zoomLink) =>
+    request(`/sessions/${id}/zoom`, { method: 'PATCH', body: { zoomLink } }),
   getSession: async (id) => {
     const data = await request(`/sessions/${id}`);
     return data.session;

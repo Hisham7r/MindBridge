@@ -2,7 +2,7 @@
 // Handles: createSession, getSession, updateSessionStatus, listPatientSessions
 
 import * as sessionService from '../services/session.service.js'
-import { createSessionSchema, updateStatusSchema }
+import { createSessionSchema, updateStatusSchema, setZoomLinkSchema }
   from '../validators/session.validator.js'
 
 export const createSession = async (req, res, next) => {
@@ -74,6 +74,43 @@ export const listPatientSessions = async (req, res, next) => {
   try {
     const sessions = await sessionService.getSessionsByPatient(req.user.id)
     return res.status(200).json({ sessions })
+  } catch (err) {
+    next(err)
+  }
+}
+
+export const listTherapistSessions = async (req, res, next) => {
+  try {
+    const sessions = await sessionService.getSessionsByTherapist(req.user.id)
+    return res.status(200).json({ sessions })
+  } catch (err) {
+    next(err)
+  }
+}
+
+export const setSessionZoomLink = async (req, res, next) => {
+  try {
+    const parsed = setZoomLinkSchema.safeParse(req.body)
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: 'Validation failed',
+        details: parsed.error.issues.map(e => ({
+          field: e.path.join('.'),
+          message: e.message,
+        })),
+      })
+    }
+
+    const session = await sessionService.setZoomLink(
+      req.params.id,
+      parsed.data.zoomLink,
+      req.user
+    )
+
+    return res.status(200).json({
+      message: 'Zoom link saved.',
+      session,
+    })
   } catch (err) {
     next(err)
   }

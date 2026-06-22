@@ -60,6 +60,8 @@ export async function getTherapistById(id) {
 }
 
 export async function getTherapistSlots(therapistId, date) {
+  const now = new Date();
+
   const where = {
     therapistId,
     isBooked: false,
@@ -70,7 +72,11 @@ export async function getTherapistSlots(therapistId, date) {
     start.setHours(0, 0, 0, 0);
     const end = new Date(date);
     end.setHours(23, 59, 59, 999);
-    where.slotDatetime = { gte: start, lte: end };
+    // For today, don't offer times that have already passed.
+    where.slotDatetime = { gte: start > now ? start : now, lte: end };
+  } else {
+    // No date filter: only ever offer upcoming slots.
+    where.slotDatetime = { gte: now };
   }
 
   const slots = await prisma.availabilitySlot.findMany({

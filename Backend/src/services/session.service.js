@@ -204,3 +204,49 @@ export const getSessionsByPatient = async (patientId) => {
 
   return sessions.map(formatSession)
 }
+
+/**
+ * Return all sessions assigned to a therapist, newest first.
+ * Accepts the THERAPIST's User.id (from the JWT) and resolves to their
+ * Therapist row via the unique therapist.userId relation.
+ */
+export const getSessionsByTherapist = async (userId) => {
+  const sessions = await prisma.session.findMany({
+    where: { therapist: { userId } },
+    include: sessionInclude,
+    orderBy: { createdAt: 'desc' },
+  })
+
+  return sessions.map(formatSession)
+}
+
+/**
+ * Set/replace a session's Zoom link. Only the session's own therapist or an
+ * admin may do this (same ownership rule as updateStatus).
+ */
+export const setZoomLink = async (id, zoomLink, requester) => {
+  const session = await prisma.session.findUnique({
+    where: { id },
+    include: sessionInclude,
+  })
+
+  if (!session) {
+    const error = new Error('Session not found.')
+    error.status = 404
+    throw error
+  }
+
+  if (requester.role !== 'ADMIN' && session.therapist.userId !== requester.id) {
+    const error = new Error('You can only update your own sessions.')
+    error.status = 403
+    throw error
+  }
+
+  const updated = await prisma.session.update({
+    where: { id },
+    data: { zoomLink },
+    include: sessionInclude,
+  })
+
+  return formatSession(updated)
+}

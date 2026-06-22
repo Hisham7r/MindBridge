@@ -25,3 +25,11 @@ export const updateStatusSchema = z.object({
     'CANCELLED',
   ]),
 })
+
+export const setZoomLinkSchema = z.object({
+  zoomLink: z
+    .string()
+    .url('A valid Zoom link URL is required')
+    .max(500, 'Zoom link must be under 500 characters')
+    .trim(),
+})
