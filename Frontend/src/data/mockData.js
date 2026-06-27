@@ -148,7 +148,6 @@ export const therapistSchedule = [
     time: "10:00 AM",
     sessionNumber: 3,
     status: "in-progress",
-    notes: "Patient has noted increased stress levels recently.",
   },
   {
     id: 2,
@@ -157,7 +156,6 @@ export const therapistSchedule = [
     time: "12:00 PM",
     sessionNumber: 1,
     status: "upcoming",
-    notes: "",
   },
   {
     id: 3,
@@ -166,7 +164,6 @@ export const therapistSchedule = [
     type: "Anxiety Management",
     sessionNumber: 4,
     status: "upcoming",
-    notes: "Review the journal entries.",
   },
   {
     id: 4,
@@ -175,7 +172,6 @@ export const therapistSchedule = [
     type: "Career Therapy – Introductory Session",
     sessionNumber: 1,
     status: "upcoming",
-    notes: "First career guidance session.",
   },
 ];
 

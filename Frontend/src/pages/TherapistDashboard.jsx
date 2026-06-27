@@ -41,6 +41,7 @@ export default function TherapistDashboard() {
   const [loading, setLoading] = useState(true);
   const [zoomLinks, setZoomLinks] = useState({});
   const [zoomBusy, setZoomBusy] = useState({}); // { [sessionId]: 'saving' | 'saved' | 'error' }
+  const [markBusy, setMarkBusy] = useState({}); // { [sessionId]: 'saving' | 'error' }
   const [activeSection, setActiveSection] = useState('overview');
 
   const today = new Date();
@@ -80,6 +81,22 @@ export default function TherapistDashboard() {
     }
   }
 
+  // Therapist marks a session attended. Updates the shared `sessions` state so
+  // BOTH "Today's Schedule" (overview) and "Today's Appointments" reflect it at
+  // once (they derive from the same array), and the patient sees it in their
+  // history on their next load.
+  async function handleMarkComplete(sessionId) {
+    setMarkBusy(prev => ({ ...prev, [sessionId]: 'saving' }));
+    try {
+      await api.updateSessionStatus(sessionId, 'COMPLETED');
+      setSessions(prev => prev.map(s => (s.id === sessionId ? { ...s, status: 'COMPLETED' } : s)));
+      setMarkBusy(prev => { const n = { ...prev }; delete n[sessionId]; return n; });
+    } catch {
+      setMarkBusy(prev => ({ ...prev, [sessionId]: 'error' }));
+      setTimeout(() => setMarkBusy(prev => { const n = { ...prev }; delete n[sessionId]; return n; }), 2500);
+    }
+  }
+
   // ── Derive views from real session data ──────────────────────────────────
   const now = new Date();
   const tomorrow = new Date(today);
@@ -94,19 +111,22 @@ export default function TherapistDashboard() {
   const toCard = (s) => ({
     id: s.id,
     status: uiStatusOf(s.status),
+    rawStatus: s.status,        // backend enum — gates the "Mark Complete" action
     time: fmtTime(s.slot?.datetime),
     patient: s.patient?.name || 'Patient',
     sessionNumber: s.sessionNumber,
     type: trackLabel(s.therapist?.track),
-    notes: s.notes,
   });
   const toBrief = (s) => ({
     id: s.id,
     patient: s.patient?.name || 'Patient',
     time: fmtTime(s.slot?.datetime),
-    task: s.notes || `Session #${s.sessionNumber} — ${trackLabel(s.therapist?.track)}`,
+    task: `Session #${s.sessionNumber} — ${trackLabel(s.therapist?.track)}`,
   });
   const todayCards = todaySessions.map(toCard);
+  // Overview "Today's Schedule" demotes completed sessions below the active ones.
+  const todayActiveCards = todayCards.filter(c => c.status !== 'done');
+  const todayDoneCards = todayCards.filter(c => c.status === 'done');
   const tomorrowBrief = tomorrowSessions.map(toBrief);
   const upcomingBrief = upcomingSessions.map(toBrief);
 
@@ -119,16 +139,6 @@ export default function TherapistDashboard() {
   const pendingPayAmount = sessions
     .filter(s => s.payment && String(s.payment.status).toUpperCase() === 'PENDING')
     .reduce((sum, s) => sum + Number(s.therapist?.feePkr || 0), 0);
-
-  // Earnings (therapist fee share)
-  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-  const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-  const approvedThisMonth = withDate.filter(s =>
-    s.payment && String(s.payment.status).toUpperCase() === 'APPROVED' &&
-    s._dt && s._dt >= monthStart && s._dt < monthEnd
-  );
-  const totalEarningsMonth = approvedThisMonth.reduce((sum, s) => sum + Number(s.therapist?.feePkr || 0), 0);
-  const earningsSessionCount = approvedThisMonth.length;
 
   // My Patients — distinct patients derived from sessions
   const patientMap = {};
@@ -160,6 +170,12 @@ export default function TherapistDashboard() {
     if (zoomBusy[id] === 'saved') return 'Sent ✓';
     if (zoomBusy[id] === 'error') return 'Retry';
     return 'Send';
+  };
+
+  const markButtonLabel = (id) => {
+    if (markBusy[id] === 'saving') return 'Saving…';
+    if (markBusy[id] === 'error') return 'Retry';
+    return '✓ Mark Complete';
   };
 
   return (
@@ -209,22 +225,15 @@ export default function TherapistDashboard() {
               {activeSection === 'overview' && 'Therapist Dashboard'}
               {activeSection === 'appointments' && 'Appointments'}
               {activeSection === 'patients' && 'My Patients'}
-              {activeSection === 'earnings' && 'Earnings & Withdrawals'}
-              {activeSection === 'resources' && 'Clinical Resources'}
               {activeSection === 'settings' && 'Settings'}
             </h1>
             <p className="text-gray-500 text-sm">
               {activeSection === 'overview' && `${dayName} — You have ${todaySessions.length} sessions today.`}
               {activeSection === 'appointments' && 'Manage your professional bookings and session links.'}
-              {activeSection === 'patients' && 'View your assigned patients and their session notes.'}
-              {activeSection === 'earnings' && 'Track your earnings and pending payments.'}
-              {activeSection === 'resources' && 'Access guidelines, templates, and clinical tools.'}
+              {activeSection === 'patients' && 'View your assigned patients.'}
               {activeSection === 'settings' && 'Manage your profile and availability hours.'}
             </p>
           </div>
-          {activeSection === 'overview' && (
-            <button className="btn-outline text-sm py-2">Weekly Report</button>
-          )}
         </div>
 
         {/* Content based on active section */}
@@ -241,15 +250,8 @@ export default function TherapistDashboard() {
                ))}
             </div>
 
-            {/* Small stat badges */}
+            {/* Sessions remaining + Tomorrow */}
             <div className="grid grid-cols-2 gap-3 mb-6">
-              <div className="card flex items-center gap-3 py-3">
-                <span className="text-2xl">📋</span>
-                <div>
-                  <p className="text-xs text-gray-400">Pending patients in</p>
-                  <p className="text-sm font-bold text-gray-800">45 mins</p>
-                </div>
-              </div>
               <div className="card flex items-center gap-3 py-3">
                 <span className="text-2xl">🗓</span>
                 <div>
@@ -257,91 +259,108 @@ export default function TherapistDashboard() {
                   <p className="text-sm font-bold text-gray-800">{todayRemaining} today</p>
                 </div>
               </div>
+              <div className="card py-3">
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="font-bold text-gray-800 text-sm">Tomorrow</h2>
+                  {tomorrowBrief.length > 1 && (
+                    <button onClick={() => setActiveSection('appointments')} className="text-brand text-xs font-semibold hover:underline">View All</button>
+                  )}
+                </div>
+                {loading ? (
+                  <p className="text-sm text-gray-400">Loading…</p>
+                ) : tomorrowBrief.length === 0 ? (
+                  <p className="text-sm text-gray-400">Nothing scheduled tomorrow.</p>
+                ) : (
+                  <div>
+                    <p className="font-semibold text-sm text-gray-800">{tomorrowBrief[0].patient}</p>
+                    <p className="text-xs text-brand">{tomorrowBrief[0].time}</p>
+                    <p className="text-xs text-gray-500 mt-1 italic">{tomorrowBrief[0].task}</p>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Schedule */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="font-bold text-gray-800">Today's Schedule</h2>
-                </div>
-                <div className="space-y-3">
-                  {loading ? (
-                    <p className="text-sm text-gray-400">Loading…</p>
-                  ) : todayCards.length === 0 ? (
-                    <div className="card text-sm text-gray-400 text-center py-6">No sessions today.</div>
-                  ) : todayCards.map(session => (
-                    <div key={session.id} className={`card border-l-4 ${session.status === 'in-progress' ? 'border-blue-400 bg-blue-50 border-blue-100' : 'border-gray-200'}`}>
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            {statusBadge[session.status]}
-                            <span className="text-xs text-gray-400 font-semibold">{session.time}</span>
-                          </div>
-                          <p className="font-bold text-gray-900">{session.patient}</p>
-                          <p className="text-xs text-gray-500">Session #{session.sessionNumber} — {session.type}</p>
-                          {session.notes && (
-                            <p className="text-xs text-gray-400 mt-1 italic">📝 {session.notes}</p>
-                          )}
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <button className="text-xs text-brand hover:underline font-medium">Open Notes</button>
-                        </div>
-                      </div>
-
-                      {/* Zoom link input */}
-                      <div className="mt-3 flex gap-2">
-                        <input
-                          type="url"
-                          placeholder="Paste Zoom link..."
-                          value={zoomLinks[session.id] || ''}
-                          onChange={e => handleZoomLink(session.id, e.target.value)}
-                          className="input-field text-xs py-2 flex-1"
-                        />
-                        <button
-                          onClick={() => handleSendZoom(session.id)}
-                          disabled={!zoomLinks[session.id] || zoomBusy[session.id] === 'saving'}
-                          className={`text-xs px-3 py-2 rounded-lg font-semibold transition-colors ${zoomLinks[session.id] && zoomBusy[session.id] !== 'saving' ? 'bg-brand text-white hover:bg-primary-700' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
-                        >
-                          {zoomButtonLabel(session.id)}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+            <div className="max-w-2xl mx-auto">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-bold text-gray-800">Today's Schedule</h2>
               </div>
+              <div className="space-y-3">
+                {loading ? (
+                  <p className="text-sm text-gray-400">Loading…</p>
+                ) : todayCards.length === 0 ? (
+                  <div className="card shadow-none text-sm text-gray-400 text-center py-6">No sessions today.</div>
+                ) : (
+                  <>
+                    {/* Active (upcoming / in-progress) sessions — full cards */}
+                    {todayActiveCards.map(session => (
+                      <div key={session.id} className={`card shadow-none ${session.status === 'in-progress' ? 'bg-blue-50' : ''}`}>
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              {statusBadge[session.status]}
+                              <span className="text-xs text-gray-400 font-semibold">{session.time}</span>
+                            </div>
+                            <p className="font-bold text-gray-900">{session.patient}</p>
+                            <p className="text-xs text-gray-500">Session #{session.sessionNumber} — {session.type}</p>
+                          </div>
+                          <div className="flex flex-col gap-1 items-end">
+                            {session.rawStatus === 'CONFIRMED' && (
+                              <button
+                                onClick={() => handleMarkComplete(session.id)}
+                                disabled={markBusy[session.id] === 'saving'}
+                                className="text-xs text-green-600 hover:text-green-700 hover:underline font-medium disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                              >
+                                {markButtonLabel(session.id)}
+                              </button>
+                            )}
+                          </div>
+                        </div>
 
-              {/* Tomorrow + Notes */}
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="font-bold text-gray-800">Tomorrow</h2>
-                  <button className="text-brand text-xs font-semibold hover:underline">View All</button>
-                </div>
-                <div className="space-y-2 mb-6">
-                  {loading ? (
-                    <p className="text-sm text-gray-400">Loading…</p>
-                  ) : tomorrowBrief.length === 0 ? (
-                    <div className="card py-3 text-sm text-gray-400 text-center">Nothing scheduled tomorrow.</div>
-                  ) : tomorrowBrief.map((s) => (
-                    <div key={s.id} className="card py-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-semibold text-sm text-gray-800">{s.patient}</p>
-                          <p className="text-xs text-brand">{s.time}</p>
+                        {/* Zoom link input */}
+                        <div className="mt-3 flex gap-2">
+                          <input
+                            type="url"
+                            placeholder="Paste Zoom link..."
+                            value={zoomLinks[session.id] || ''}
+                            onChange={e => handleZoomLink(session.id, e.target.value)}
+                            className="input-field text-xs py-2 flex-1"
+                          />
+                          <button
+                            onClick={() => handleSendZoom(session.id)}
+                            disabled={!zoomLinks[session.id] || zoomBusy[session.id] === 'saving'}
+                            className={`text-xs px-3 py-2 rounded-lg font-semibold transition-colors ${zoomLinks[session.id] && zoomBusy[session.id] !== 'saving' ? 'bg-brand text-white hover:bg-primary-700' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
+                          >
+                            {zoomButtonLabel(session.id)}
+                          </button>
                         </div>
                       </div>
-                      <p className="text-xs text-gray-500 mt-1 italic">{s.task}</p>
-                    </div>
-                  ))}
-                </div>
+                    ))}
 
-                {/* Urdu notes block */}
-                <div className="card bg-gray-50 border-dashed">
-                  <p className="text-xs font-semibold text-gray-400 mb-2">Session Notes (English)</p>
-                  <p className="text-sm leading-loose text-gray-700" style={{ fontFamily: 'serif', direction: 'ltr', textAlign: 'left' }}>
-                    This session was very productive. The patient opened up about their concerns. We will focus on their career challenges in the next session.
-                  </p>
-                </div>
+                    {/* All of today's sessions complete */}
+                    {todayActiveCards.length === 0 && (
+                      <div className="card shadow-none text-center py-6">
+                        <p className="text-sm font-semibold text-green-600">✓ All of today's sessions are complete</p>
+                      </div>
+                    )}
+
+                    {/* Completed sessions — demoted, compact, no actions */}
+                    {todayDoneCards.map(session => (
+                      <div key={session.id} className="card shadow-none bg-gray-50 py-3 opacity-70">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              {statusBadge[session.status]}
+                              <span className="text-xs text-gray-400 font-semibold">{session.time}</span>
+                            </div>
+                            <p className="font-semibold text-sm text-gray-700 mt-1">{session.patient}</p>
+                          </div>
+                          <span className="text-xs text-gray-400">Session #{session.sessionNumber}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
               </div>
             </div>
           </>
@@ -359,45 +378,78 @@ export default function TherapistDashboard() {
                   {loading ? (
                     <p className="text-sm text-gray-400">Loading…</p>
                   ) : todayCards.length === 0 ? (
-                    <div className="card text-sm text-gray-400 text-center py-6">No sessions today.</div>
-                  ) : todayCards.map(session => (
-                    <div key={session.id} className={`card border-l-4 ${session.status === 'in-progress' ? 'border-blue-400 bg-blue-50 border-blue-100' : 'border-gray-200'}`}>
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            {statusBadge[session.status]}
-                            <span className="text-xs text-gray-400 font-semibold">{session.time}</span>
+                    <div className="card shadow-none text-sm text-gray-400 text-center py-6">No sessions today.</div>
+                  ) : (
+                    <>
+                      {/* Active (upcoming / in-progress) sessions — full cards */}
+                      {todayActiveCards.map(session => (
+                        <div key={session.id} className={`card shadow-none ${session.status === 'in-progress' ? 'bg-blue-50' : ''}`}>
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                {statusBadge[session.status]}
+                                <span className="text-xs text-gray-400 font-semibold">{session.time}</span>
+                              </div>
+                              <p className="font-bold text-gray-900">{session.patient}</p>
+                              <p className="text-xs text-gray-500">Session #{session.sessionNumber} — {session.type}</p>
+                            </div>
+                            <div className="flex flex-col gap-1 items-end">
+                              {session.rawStatus === 'CONFIRMED' && (
+                                <button
+                                  onClick={() => handleMarkComplete(session.id)}
+                                  disabled={markBusy[session.id] === 'saving'}
+                                  className="text-xs text-green-600 hover:text-green-700 hover:underline font-medium disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                                >
+                                  {markButtonLabel(session.id)}
+                                </button>
+                              )}
+                            </div>
                           </div>
-                          <p className="font-bold text-gray-900">{session.patient}</p>
-                          <p className="text-xs text-gray-500">Session #{session.sessionNumber} — {session.type}</p>
-                          {session.notes && (
-                            <p className="text-xs text-gray-400 mt-1 italic">📝 {session.notes}</p>
-                          )}
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <button className="text-xs text-brand hover:underline font-medium">Open Notes</button>
-                        </div>
-                      </div>
 
-                      {/* Zoom link input */}
-                      <div className="mt-3 flex gap-2">
-                        <input
-                          type="url"
-                          placeholder="Paste Zoom link..."
-                          value={zoomLinks[session.id] || ''}
-                          onChange={e => handleZoomLink(session.id, e.target.value)}
-                          className="input-field text-xs py-2 flex-1"
-                        />
-                        <button
-                          onClick={() => handleSendZoom(session.id)}
-                          disabled={!zoomLinks[session.id] || zoomBusy[session.id] === 'saving'}
-                          className={`text-xs px-3 py-2 rounded-lg font-semibold transition-colors ${zoomLinks[session.id] && zoomBusy[session.id] !== 'saving' ? 'bg-brand text-white hover:bg-primary-700' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
-                        >
-                          {zoomButtonLabel(session.id)}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                          {/* Zoom link input */}
+                          <div className="mt-3 flex gap-2">
+                            <input
+                              type="url"
+                              placeholder="Paste Zoom link..."
+                              value={zoomLinks[session.id] || ''}
+                              onChange={e => handleZoomLink(session.id, e.target.value)}
+                              className="input-field text-xs py-2 flex-1"
+                            />
+                            <button
+                              onClick={() => handleSendZoom(session.id)}
+                              disabled={!zoomLinks[session.id] || zoomBusy[session.id] === 'saving'}
+                              className={`text-xs px-3 py-2 rounded-lg font-semibold transition-colors ${zoomLinks[session.id] && zoomBusy[session.id] !== 'saving' ? 'bg-brand text-white hover:bg-primary-700' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
+                            >
+                              {zoomButtonLabel(session.id)}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* All of today's sessions complete */}
+                      {todayActiveCards.length === 0 && (
+                        <div className="card shadow-none text-center py-6">
+                          <p className="text-sm font-semibold text-green-600">✓ All of today's sessions are complete</p>
+                        </div>
+                      )}
+
+                      {/* Completed sessions — demoted, compact, no actions */}
+                      {todayDoneCards.map(session => (
+                        <div key={session.id} className="card shadow-none bg-gray-50 py-3 opacity-70">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                {statusBadge[session.status]}
+                                <span className="text-xs text-gray-400 font-semibold">{session.time}</span>
+                              </div>
+                              <p className="font-semibold text-sm text-gray-700 mt-1">{session.patient}</p>
+                            </div>
+                            <span className="text-xs text-gray-400">Session #{session.sessionNumber}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -444,14 +496,13 @@ export default function TherapistDashboard() {
                       <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400">Last Session</th>
                       <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400">Session Count</th>
                       <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400">Status</th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {loading ? (
-                      <tr><td colSpan={5} className="py-8 text-center text-gray-400 text-sm">Loading…</td></tr>
+                      <tr><td colSpan={4} className="py-8 text-center text-gray-400 text-sm">Loading…</td></tr>
                     ) : patientRows.length === 0 ? (
-                      <tr><td colSpan={5} className="py-8 text-center text-gray-400 text-sm">No patients yet.</td></tr>
+                      <tr><td colSpan={4} className="py-8 text-center text-gray-400 text-sm">No patients yet.</td></tr>
                     ) : patientRows.map((patient, i) => (
                       <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
                         <td className="py-3 px-4 text-sm text-gray-800 font-medium">{patient.name}</td>
@@ -462,118 +513,11 @@ export default function TherapistDashboard() {
                             {patient.status}
                           </span>
                         </td>
-                        <td className="py-3 px-4 text-sm">
-                          <button className="text-brand hover:underline font-medium">View Notes</button>
-                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            </div>
-          </div>
-        )}
-
-        {/* Earnings Section */}
-        {activeSection === 'earnings' && (
-          <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-            <div className="card">
-              <p className="text-xs font-semibold text-gray-400">Total Earnings (This Month)</p>
-              <p className="text-3xl font-bold mt-2 text-gray-900">PKR {totalEarningsMonth.toLocaleString()}</p>
-              <p className="text-xs text-gray-400 mt-1">From {earningsSessionCount} session{earningsSessionCount === 1 ? '' : 's'}</p>
-            </div>
-            <div className="card">
-              <p className="text-xs font-semibold text-gray-400">Pending Payments</p>
-              <p className="text-3xl font-bold mt-2 text-brand">PKR {pendingPayAmount.toLocaleString()}</p>
-              <p className="text-xs text-gray-400 mt-1">Awaiting admin approval</p>
-            </div>
-            <div className="card">
-              <p className="text-xs font-semibold text-gray-400">Withdrawn (YTD)</p>
-              <p className="text-3xl font-bold mt-2 text-gray-900">PKR 180,000</p>
-              <p className="text-xs text-gray-400 mt-1">4 successful withdrawals</p>
-            </div>
-            <div className="card lg:col-span-3">
-              <h3 className="font-bold text-gray-800 mb-4">Withdrawal History</h3>
-              <div className="space-y-2">
-                {[
-                  { date: 'Oct 15, 2024', amount: 'PKR 50,000', status: 'Completed', bank: 'HBL Account ***1234' },
-                  { date: 'Sep 20, 2024', amount: 'PKR 45,000', status: 'Completed', bank: 'Easypaisa Wallet' },
-                  { date: 'Aug 30, 2024', amount: 'PKR 40,000', status: 'Completed', bank: 'HBL Account ***1234' },
-                ].map((tx, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div>
-                      <p className="font-semibold text-sm text-gray-800">{tx.date}</p>
-                      <p className="text-xs text-gray-400">{tx.bank}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-sm text-gray-800">{tx.amount}</p>
-                      <p className="text-xs text-green-600 font-medium">{tx.status}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Resources Section */}
-        {activeSection === 'resources' && (
-          <div className="mt-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {[
-                {
-                  title: 'Session Templates',
-                  desc: 'Pre-designed session structures for common issues.',
-                  icon: (
-                    <svg className="w-8 h-8 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" strokeWidth="2">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01m-.01 4h.01" />
-                    </svg>
-                  )
-                },
-                {
-                  title: 'Clinical Guidelines',
-                  desc: 'Internal protocols and best practices documentation.',
-                  icon: (
-                    <svg className="w-8 h-8 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" strokeWidth="2">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                    </svg>
-                  )
-                },
-                {
-                  title: 'Emergency Procedures',
-                  desc: 'Crisis intervention protocols and contacts.',
-                  icon: (
-                    <svg className="w-8 h-8 text-danger" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" strokeWidth="2">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                  )
-                },
-                {
-                  title: 'Patient Psychology Tools',
-                  desc: 'Assessments, worksheets, and diagnostic tools.',
-                  icon: (
-                    <svg className="w-8 h-8 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" strokeWidth="2">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 011-1h1a2 2 0 100-4H7a1 1 0 01-1-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" />
-                    </svg>
-                  )
-                },
-              ].map((resource, i) => (
-                <div key={i} className="card cursor-pointer hover:shadow-md hover:border-brand transition-all">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="mb-3">{resource.icon}</div>
-                      <p className="font-bold text-gray-800">{resource.title}</p>
-                      <p className="text-sm text-gray-500 mt-1">{resource.desc}</p>
-                    </div>
-                  </div>
-                  <button className="text-brand text-sm font-medium mt-4 flex items-center gap-1 hover:underline">
-                    Access Resource
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
-                    </svg>
-                  </button>
-                </div>
-              ))}
             </div>
           </div>
         )}

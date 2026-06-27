@@ -30,7 +30,6 @@ function formatSession(s) {
     sessionType: s.sessionType,
     durationMins: s.durationMins,
     zoomLink: s.zoomLink,
-    notes: s.notes,
     createdAt: s.createdAt,
     slot: s.slot
       ? { id: s.slot.id, datetime: s.slot.slotDatetime }
