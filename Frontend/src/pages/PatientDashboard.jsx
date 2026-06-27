@@ -24,11 +24,80 @@ const trackLabel = (track) => (track === 'CAREER' ? 'Career Guidance' : 'Mental 
 const fmtDate = (dt) => (dt ? new Date(dt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—');
 const fmtTime = (dt) => (dt ? new Date(dt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '—');
 
+// ── Reminder-banner helpers ──────────────────────────────────────────────────
+// Relative day label: "today" / "tomorrow" / "on Jun 26, 2026".
+const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+const daysFromToday = (dt) => Math.round((startOfDay(new Date(dt)) - startOfDay(new Date())) / 86400000);
+const dayLabel = (dt) => {
+  const diff = daysFromToday(dt);
+  if (diff === 0) return 'today';
+  if (diff === 1) return 'tomorrow';
+  return `on ${fmtDate(dt)}`;
+};
+// Urdu reminder: day word + time-of-day period (صبح/دوپہر/شام/رات) + hour.
+const urduBanner = (dt) => {
+  const diff = daysFromToday(dt);
+  if (diff !== 0 && diff !== 1) return `آپ کا اگلا سیشن ${fmtDate(dt)} کو ہے`;
+  const h = new Date(dt).getHours();
+  const period = h < 5 ? 'رات' : h < 12 ? 'صبح' : h < 16 ? 'دوپہر' : h < 19 ? 'شام' : 'رات';
+  return `آپ کا سیشن ${diff === 0 ? 'آج' : 'کل'} ${period} ${(h % 12) || 12} بجے ہے`;
+};
+
+// Past-sessions table — shared by the Overview ("Past Sessions History") and the
+// Schedule "Past" tab. Shows only the most recent session by default; "View All"
+// (the 4th column) expands/collapses the full history.
+function PastSessionsTable({ pastList, loading, showAll, onToggle }) {
+  const rows = showAll ? pastList : pastList.slice(0, 1);
+  const hasMore = pastList.length > 1;
+  return (
+    <div className="card overflow-hidden p-0">
+      <table className="w-full table-fixed">
+        <thead>
+          <tr className="bg-gray-50 text-xs font-semibold text-gray-400 uppercase tracking-wide border-b border-gray-100">
+            <th className="w-1/4 text-left px-6 py-4">Therapist</th>
+            <th className="w-1/4 text-left px-4 py-4">Date</th>
+            <th className="w-1/4 text-left px-4 py-4">Duration</th>
+            <th className="w-1/4 text-right px-6 py-4">
+              {hasMore && (
+                <button onClick={onToggle} className="text-brand text-sm font-semibold hover:underline normal-case">
+                  {showAll ? 'View Less' : 'View All'}
+                </button>
+              )}
+            </th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-50">
+          {loading ? (
+            <tr><td colSpan={4} className="px-6 py-8 text-center text-gray-400 text-sm">Loading…</td></tr>
+          ) : pastList.length === 0 ? (
+            <tr><td colSpan={4} className="px-6 py-8 text-center text-gray-400 text-sm">No attended sessions yet.</td></tr>
+          ) : rows.map((s) => (
+            <tr key={s.id} className="hover:bg-gray-50 transition-colors">
+              <td className="px-6 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: s.color }}>
+                    {s.initials}
+                  </div>
+                  <span className="font-medium text-sm text-gray-800">{s.therapist}</span>
+                </div>
+              </td>
+              <td className="px-4 py-4 text-sm text-gray-600">{s.date}</td>
+              <td className="px-4 py-4 text-sm text-gray-600">{s.duration}</td>
+              <td className="px-6 py-4"></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function PatientDashboard() {
   const { currentUser, logout, setCurrentUser } = useRole();
   const navigate = useNavigate();
   const [activeSection, setActiveSection] = useState('overview');
   const [scheduleTab, setScheduleTab] = useState('upcoming');
+  const [showAllPast, setShowAllPast] = useState(false);
 
   const [sessions, setSessions] = useState([]);
   const [loadingSessions, setLoadingSessions] = useState(true);
@@ -60,11 +129,18 @@ export default function PatientDashboard() {
     return dt ? dt < now : false;
   };
 
-  const upcomingRaw = sessions
+  // A rejected payment sends the session back to PENDING_PAYMENT on the backend,
+  // so hide those bookings from the schedule entirely (they remain in Payments).
+  const isRejected = (s) => String(s.payment?.status || '').toUpperCase() === 'REJECTED';
+  const visibleSessions = sessions.filter((s) => !isRejected(s));
+
+  const upcomingRaw = visibleSessions
     .filter((s) => !isPast(s))
     .sort((a, b) => new Date(a.slot?.datetime || 0) - new Date(b.slot?.datetime || 0));
-  const pastRaw = sessions
-    .filter(isPast)
+  // "Past" = attended sessions only (the therapist marked them COMPLETED).
+  // Cancelled or unpaid-but-elapsed bookings are intentionally not shown here.
+  const pastRaw = visibleSessions
+    .filter((s) => s.status === 'COMPLETED')
     .sort((a, b) => new Date(b.slot?.datetime || 0) - new Date(a.slot?.datetime || 0));
 
   const upcomingSessions = upcomingRaw.map((s) => ({
@@ -229,35 +305,32 @@ export default function PatientDashboard() {
 
       {/* Main Content */}
       <main className="ml-56 flex-1 flex flex-col">
-        {/* Reminder Banner */}
-        <div className="bg-green-50 border-b border-green-100 px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-lg">📅</span>
-            <div>
-              <p className="text-sm font-semibold text-green-800">Your session is tomorrow at 5 PM</p>
-              <p className="text-xs text-green-600" style={{ fontFamily: 'serif' }}>آپ کا سیشن کل شام 5 بجے ہے</p>
+        {/* Reminder Banner — reflects the patient's next upcoming session */}
+        {nextSession?.slot?.datetime && (
+          <div className="bg-green-50 border-b border-green-100 px-6 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-lg">📅</span>
+              <div>
+                <p className="text-sm font-semibold text-green-800">
+                  Your session is {dayLabel(nextSession.slot.datetime)} at {fmtTime(nextSession.slot.datetime)}
+                </p>
+                <p className="text-xs text-green-600" style={{ fontFamily: 'serif' }}>{urduBanner(nextSession.slot.datetime)}</p>
+              </div>
             </div>
+            <button
+              onClick={() => setActiveSection('schedule')}
+              className="bg-gray-800 text-white text-xs font-semibold px-4 py-1.5 rounded-full hover:bg-gray-700 transition-colors"
+            >
+              VIEW DETAILS
+            </button>
           </div>
-          <button className="bg-gray-800 text-white text-xs font-semibold px-4 py-1.5 rounded-full hover:bg-gray-700 transition-colors">
-            VIEW DETAILS
-          </button>
-        </div>
+        )}
 
         <div className="p-8">
           {/* Header */}
-          <div className="flex items-start justify-between mb-8">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">{sectionMeta[activeSection].title}</h1>
-              <p className="text-gray-500 mt-1">{sectionMeta[activeSection].subtitle}</p>
-            </div>
-            {activeSection === 'overview' && (
-              <div className="text-right">
-                <p className="text-xs text-brand font-semibold uppercase tracking-widest">CURRENT STREAK</p>
-                <div className="flex items-center gap-2 mt-1 justify-end">
-                  <p className="text-3xl font-bold text-gray-900">12 Days</p>
-                </div>
-              </div>
-            )}
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-gray-900">{sectionMeta[activeSection].title}</h1>
+            <p className="text-gray-500 mt-1">{sectionMeta[activeSection].subtitle}</p>
           </div>
 
           {/* SECTION 1: OVERVIEW */}
@@ -265,10 +338,7 @@ export default function PatientDashboard() {
             <>
               {/* Upcoming Sessions */}
               <section className="mb-8">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="font-bold text-gray-800 text-lg">Upcoming Sessions</h2>
-                  <button className="text-brand text-sm font-semibold hover:underline">View All</button>
-                </div>
+                <h2 className="font-bold text-gray-800 text-lg mb-4">Upcoming Sessions</h2>
                 {loadingSessions ? (
                   <p className="text-sm text-gray-400">Loading sessions…</p>
                 ) : upcomingSessions.length === 0 ? (
@@ -306,58 +376,13 @@ export default function PatientDashboard() {
 
               {/* Past Sessions */}
               <section>
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="font-bold text-gray-800 text-lg">Past Sessions History</h2>
-                  <div className="flex gap-2">
-                    <button className="badge badge-gray cursor-pointer hover:bg-gray-200">Filter</button>
-                    <button className="badge badge-gray cursor-pointer hover:bg-gray-200">Download CSV</button>
-                  </div>
-                </div>
-                <div className="card overflow-hidden p-0">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="bg-gray-50 text-xs font-semibold text-gray-400 uppercase tracking-wide border-b border-gray-100">
-                        <th className="text-left px-6 py-4">Therapist</th>
-                        <th className="text-left px-4 py-4">Date</th>
-                        <th className="text-left px-4 py-4">Duration</th>
-                        <th className="text-left px-4 py-4">Mood Post-Session</th>
-                        <th className="text-left px-4 py-4">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {loadingSessions ? (
-                        <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-400 text-sm">Loading…</td></tr>
-                      ) : pastList.length === 0 ? (
-                        <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-400 text-sm">No past sessions yet.</td></tr>
-                      ) : pastList.map(s => (
-                        <tr key={s.id} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: s.color }}>
-                                {s.initials}
-                              </div>
-                              <span className="font-medium text-sm text-gray-800">{s.therapist}</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-4 text-sm text-gray-600">{s.date}</td>
-                          <td className="px-4 py-4 text-sm text-gray-600">{s.duration}</td>
-                          <td className="px-4 py-4">
-                            {s.mood ? (
-                              <span className={`badge ${moodColors[s.moodColor]}`}>
-                                {s.moodColor === 'green' ? '😊' : s.moodColor === 'blue' ? '⚡' : '😴'} {s.mood}
-                              </span>
-                            ) : (
-                              <span className="badge badge-gray">—</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-4">
-                            <button className="text-brand text-sm font-semibold hover:underline">Notes</button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <h2 className="font-bold text-gray-800 text-lg mb-4">Past Sessions History</h2>
+                <PastSessionsTable
+                  pastList={pastList}
+                  loading={loadingSessions}
+                  showAll={showAllPast}
+                  onToggle={() => setShowAllPast((v) => !v)}
+                />
               </section>
             </>
           )}
@@ -428,51 +453,12 @@ export default function PatientDashboard() {
               )}
 
               {scheduleTab === 'past' && (
-                <div className="card overflow-hidden p-0">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="bg-gray-50 text-xs font-semibold text-gray-400 uppercase tracking-wide border-b border-gray-100">
-                        <th className="text-left px-6 py-4">Therapist</th>
-                        <th className="text-left px-4 py-4">Date</th>
-                        <th className="text-left px-4 py-4">Duration</th>
-                        <th className="text-left px-4 py-4">Mood Post-Session</th>
-                        <th className="text-left px-4 py-4">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {loadingSessions ? (
-                        <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-400 text-sm">Loading…</td></tr>
-                      ) : pastList.length === 0 ? (
-                        <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-400 text-sm">No past sessions yet.</td></tr>
-                      ) : pastList.map(s => (
-                        <tr key={s.id} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: s.color }}>
-                                {s.initials}
-                              </div>
-                              <span className="font-medium text-sm text-gray-800">{s.therapist}</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-4 text-sm text-gray-600">{s.date}</td>
-                          <td className="px-4 py-4 text-sm text-gray-600">{s.duration}</td>
-                          <td className="px-4 py-4">
-                            {s.mood ? (
-                              <span className={`badge ${moodColors[s.moodColor]}`}>
-                                {s.moodColor === 'green' ? '😊' : s.moodColor === 'blue' ? '⚡' : '😴'} {s.mood}
-                              </span>
-                            ) : (
-                              <span className="badge badge-gray">—</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-4">
-                            <button className="text-brand text-sm font-semibold hover:underline">Notes</button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <PastSessionsTable
+                  pastList={pastList}
+                  loading={loadingSessions}
+                  showAll={showAllPast}
+                  onToggle={() => setShowAllPast((v) => !v)}
+                />
               )}
             </section>
           )}
