@@ -4,19 +4,38 @@ import { useRole } from '../context/RoleContext';
 
 export default function Register() {
   const [tab, setTab] = useState('patient');
-  const [form, setForm] = useState({ name: '', email: '', password: '' });
+  const [form, setForm] = useState({ name: '', email: '', password: '', licenseNumber: '', specializations: '' });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const { register } = useRole();
   const navigate = useNavigate();
 
+  const isTherapist = tab === 'therapist';
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
+
+    // Therapist sign-up collects licence + specializations up front; the rest
+    // of the profile (title, about, fee, languages…) is completed in Settings.
+    let extras;
+    if (isTherapist) {
+      const specs = form.specializations.split(',').map((s) => s.trim()).filter(Boolean);
+      if (!form.licenseNumber.trim()) {
+        setError('Please enter your license number.');
+        return;
+      }
+      if (specs.length === 0) {
+        setError('Please enter at least one specialization.');
+        return;
+      }
+      extras = { licenseNumber: form.licenseNumber.trim(), specializations: specs };
+    }
+
     setSubmitting(true);
     try {
       // UI tab ('patient'/'therapist') -> backend role enum (UPPERCASE).
-      const uiRole = await register(form.name, form.email, form.password, tab.toUpperCase());
+      const uiRole = await register(form.name, form.email, form.password, tab.toUpperCase(), extras);
       navigate(uiRole === 'therapist' ? '/dashboard/therapist' : '/dashboard/patient');
     } catch (err) {
       // Surface the first field-level validation message if present.
@@ -132,6 +151,37 @@ export default function Register() {
               </div>
             </div>
 
+            {/* Therapist-only fields — appear when the "Therapist" tab is active */}
+            {isTherapist && (
+              <>
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-1 block">License Number</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. PSY-2024-001234"
+                    value={form.licenseNumber}
+                    onChange={(e) => setForm({ ...form, licenseNumber: e.target.value })}
+                    className="input-field"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-1 block">Specializations</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Anxiety, Depression, CBT"
+                    value={form.specializations}
+                    onChange={(e) => setForm({ ...form, specializations: e.target.value })}
+                    className="input-field"
+                    required
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    Separate multiple with commas. You'll add the rest of your profile (title, fee, about, languages) after signing up.
+                  </p>
+                </div>
+              </>
+            )}
+
             <button type="submit" disabled={submitting} className="btn-primary w-full py-4 text-base mt-2 disabled:opacity-60 disabled:cursor-not-allowed">
               {submitting ? 'Creating account…' : 'Create Account →'}
             </button>
@@ -142,8 +192,8 @@ export default function Register() {
             <div className="relative flex justify-center"><span className="bg-white px-3 text-xs text-gray-400 font-medium">OR CONTINUE WITH</span></div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <button className="flex items-center justify-center gap-2 border border-gray-200 rounded-xl py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+          <div className="flex justify-center">
+            <button className="flex items-center justify-center gap-2 border border-gray-200 rounded-xl py-3 px-8 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors w-1/2">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" className="w-5 h-5">
                 <path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24s8.955,20,20,20s20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z" />
                 <path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z" />
@@ -151,12 +201,6 @@ export default function Register() {
                 <path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571c0.001-0.001,0.002-0.001,0.003-0.002l6.19,5.238C36.971,39.205,44,34,44,24C44,22.659,43.862,21.35,43.611,20.083z" />
               </svg>
               <span>Google</span>
-            </button>
-            <button className="flex items-center justify-center gap-2 border border-gray-200 rounded-xl py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-5 h-5">
-                <path fill="#0A66C2" d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
-              </svg>
-              <span>LinkedIn</span>
             </button>
           </div>
 

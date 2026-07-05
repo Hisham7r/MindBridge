@@ -42,8 +42,8 @@ export function RoleProvider({ children }) {
     return toUiRole(user.role);
   }
 
-  async function register(name, email, password, apiRole) {
-    const { user, token } = await api.register(name, email, password, apiRole);
+  async function register(name, email, password, apiRole, extras) {
+    const { user, token } = await api.register(name, email, password, apiRole, extras);
     setToken(token);
     setCurrentUser(mapUser(user));
     setRole(toUiRole(user.role));

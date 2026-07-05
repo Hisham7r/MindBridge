@@ -34,8 +34,25 @@ function weekStart(d) {
   return x;
 }
 
+// Map an API therapist profile into the Settings form's string fields.
+// Array fields (specializations/languages) are shown as comma-separated text.
+function profileToForm(p) {
+  return {
+    name: p.name || '',
+    title: p.title || '',
+    licenseNumber: p.licenseNumber || '',
+    track: p.track || 'MENTAL_HEALTH',
+    credentials: p.credentials || '',
+    specializations: (p.specializations || []).join(', '),
+    languages: (p.languages || []).join(', '),
+    about: p.about || '',
+    methodology: p.methodology || '',
+    feePkr: p.feePkr != null ? String(p.feePkr) : '',
+  };
+}
+
 export default function TherapistDashboard() {
-  const { currentUser, logout } = useRole();
+  const { currentUser, setCurrentUser, logout } = useRole();
   const navigate = useNavigate();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -43,6 +60,12 @@ export default function TherapistDashboard() {
   const [zoomBusy, setZoomBusy] = useState({}); // { [sessionId]: 'saving' | 'saved' | 'error' }
   const [markBusy, setMarkBusy] = useState({}); // { [sessionId]: 'saving' | 'error' }
   const [activeSection, setActiveSection] = useState('overview');
+
+  // ── Therapist's own editable profile (Settings tab) ──
+  const [profile, setProfile] = useState(null);   // last-saved profile from the API
+  const [pform, setPform] = useState(null);        // controlled form values (null while loading)
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [saveMsg, setSaveMsg] = useState('');      // 'active' | 'incomplete' | error text | ''
 
   const today = new Date();
   const dayName = today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
@@ -61,6 +84,58 @@ export default function TherapistDashboard() {
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, []);
+
+  // Load the therapist's own profile for the Settings tab.
+  useEffect(() => {
+    let active = true;
+    api.getMyTherapistProfile()
+      .then((p) => {
+        if (!active) return;
+        setProfile(p);
+        setPform(profileToForm(p));
+      })
+      .catch(() => { /* not a therapist / fetch failed — Settings stays empty */ });
+    return () => { active = false; };
+  }, []);
+
+  const setField = (key, value) => setPform((f) => ({ ...f, [key]: value }));
+
+  async function handleSaveProfile() {
+    if (!pform) return;
+    setSavingProfile(true);
+    setSaveMsg('');
+    try {
+      const payload = {
+        name: pform.name.trim(),
+        title: pform.title.trim(),
+        licenseNumber: pform.licenseNumber.trim(),
+        track: pform.track,
+        credentials: pform.credentials.trim(),
+        about: pform.about.trim(),
+        methodology: pform.methodology.trim(),
+        specializations: pform.specializations.split(',').map((s) => s.trim()).filter(Boolean),
+        languages: pform.languages.split(',').map((s) => s.trim()).filter(Boolean),
+      };
+      // Only send a fee when it's a valid positive number; otherwise leave it unchanged.
+      const fee = parseInt(pform.feePkr, 10);
+      if (!Number.isNaN(fee) && fee > 0) payload.feePkr = fee;
+
+      const updated = await api.updateMyTherapistProfile(payload);
+      setProfile(updated);
+      setPform(profileToForm(updated));
+      // Reflect a name change in the sidebar immediately.
+      if (updated.name && updated.name !== currentUser?.name) {
+        setCurrentUser({ ...currentUser, name: updated.name, initials: updated.initials });
+      }
+      setSaveMsg(updated.isActive ? 'active' : 'incomplete');
+      setTimeout(() => setSaveMsg(''), 5000);
+    } catch (err) {
+      const detail = err.details?.[0]?.message;
+      setSaveMsg(detail || err.message || 'Could not save. Please try again.');
+    } finally {
+      setSavingProfile(false);
+    }
+  }
 
   function handleZoomLink(sessionId, value) {
     setZoomLinks(prev => ({ ...prev, [sessionId]: value }));
@@ -525,43 +600,104 @@ export default function TherapistDashboard() {
         {/* Settings Section */}
         {activeSection === 'settings' && (
           <div className="mt-6 max-w-2xl">
+            {/* Listing status banner */}
+            {profile && (
+              profile.isActive ? (
+                <div className="mb-4 rounded-xl border border-green-100 bg-green-50 px-4 py-3 text-sm text-green-700">
+                  ✓ Your profile is <span className="font-semibold">live</span> — patients can find and book you.
+                </div>
+              ) : (
+                <div className="mb-4 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                  Your profile isn't listed yet. Complete every field below (including a fee above 0) and save to go live.
+                </div>
+              )
+            )}
+
             <div className="card mb-6">
               <h3 className="font-bold text-gray-800 mb-4">Profile Settings</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-                  <input type="text" defaultValue={currentUser?.name || ''} className="input-field w-full" />
+              {!pform ? (
+                <p className="text-sm text-gray-400">Loading your profile…</p>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                    <input type="text" value={pform.name} onChange={(e) => setField('name', e.target.value)} className="input-field w-full" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Professional Title</label>
+                    <input type="text" placeholder="e.g. Clinical Psychologist" value={pform.title} onChange={(e) => setField('title', e.target.value)} className="input-field w-full" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">License Number</label>
+                    <input type="text" placeholder="e.g. PSY-2024-001234" value={pform.licenseNumber} onChange={(e) => setField('licenseNumber', e.target.value)} className="input-field w-full" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Track</label>
+                    <select value={pform.track} onChange={(e) => setField('track', e.target.value)} className="input-field w-full">
+                      <option value="MENTAL_HEALTH">Mental Health</option>
+                      <option value="CAREER">Career</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Education</label>
+                    <input type="text" placeholder="e.g. PhD Clinical Psychology, Aga Khan University" value={pform.credentials} onChange={(e) => setField('credentials', e.target.value)} className="input-field w-full" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Specializations</label>
+                    <input type="text" placeholder="e.g. Anxiety, Depression, CBT" value={pform.specializations} onChange={(e) => setField('specializations', e.target.value)} className="input-field w-full" />
+                    <p className="text-xs text-gray-400 mt-1">Separate multiple with commas.</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Languages</label>
+                    <input type="text" placeholder="e.g. English, Urdu" value={pform.languages} onChange={(e) => setField('languages', e.target.value)} className="input-field w-full" />
+                    <p className="text-xs text-gray-400 mt-1">Separate multiple with commas.</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Fee (PKR)</label>
+                    <input type="number" min="0" placeholder="e.g. 3000" value={pform.feePkr} onChange={(e) => setField('feePkr', e.target.value)} className="input-field w-full" />
+                    <p className="text-xs text-gray-400 mt-1">Your per-session rate in Pakistani Rupees.</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">About</label>
+                    <textarea rows={4} placeholder="Tell patients about your background and approach." value={pform.about} onChange={(e) => setField('about', e.target.value)} className="input-field w-full" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Methodology</label>
+                    <textarea rows={3} placeholder="e.g. CBT, Mindfulness-Based Stress Reduction, Trauma-Focused therapy" value={pform.methodology} onChange={(e) => setField('methodology', e.target.value)} className="input-field w-full" />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">License Number</label>
-                  <input type="text" defaultValue="PSY-2024-001234" className="input-field w-full" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Specialization</label>
-                  <input type="text" defaultValue="Cognitive Behavioral Therapy, Career Counseling" className="input-field w-full" />
-                </div>
-              </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3 mb-6">
+              <button onClick={handleSaveProfile} disabled={savingProfile || !pform} className="btn-primary text-sm py-2 px-6 disabled:opacity-60 disabled:cursor-not-allowed">
+                {savingProfile ? 'Saving…' : 'Save Changes'}
+              </button>
+              <button onClick={() => profile && setPform(profileToForm(profile))} disabled={savingProfile || !profile} className="btn-outline text-sm py-2 px-6 disabled:opacity-60 disabled:cursor-not-allowed">
+                Cancel
+              </button>
+              {saveMsg === 'active' && <span className="text-sm text-green-600">Saved — your profile is live ✓</span>}
+              {saveMsg === 'incomplete' && <span className="text-sm text-amber-600">Saved. Complete all fields (fee &gt; 0) to go live.</span>}
+              {saveMsg && saveMsg !== 'active' && saveMsg !== 'incomplete' && <span className="text-sm text-red-600">{saveMsg}</span>}
             </div>
 
             <div className="card mb-6">
-              <h3 className="font-bold text-gray-800 mb-4">Availability Hours</h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-gray-800">Availability Hours</h3>
+                <span className="text-xs text-gray-400 italic">Coming soon</span>
+              </div>
               <div className="space-y-3">
                 {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map((day, i) => (
                   <div key={i} className="flex items-center justify-between">
                     <span className="text-sm font-medium text-gray-700">{day}</span>
                     <div className="flex items-center gap-2">
-                      <input type="time" defaultValue="09:00" className="input-field w-24 text-sm py-2" />
+                      <input type="time" defaultValue="09:00" disabled className="input-field w-24 text-sm py-2 opacity-60" />
                       <span className="text-gray-400">—</span>
-                      <input type="time" defaultValue="18:00" className="input-field w-24 text-sm py-2" />
+                      <input type="time" defaultValue="18:00" disabled className="input-field w-24 text-sm py-2 opacity-60" />
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
-
-            <div className="flex gap-3">
-              <button className="btn-primary text-sm py-2 px-6">Save Changes</button>
-              <button className="btn-outline text-sm py-2 px-6">Cancel</button>
             </div>
           </div>
         )}

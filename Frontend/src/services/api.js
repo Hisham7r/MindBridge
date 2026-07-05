@@ -63,8 +63,8 @@ export const api = {
   // ── Auth ──
   login: (email, password) =>
     request('/auth/login', { method: 'POST', body: { email, password }, auth: false }),
-  register: (name, email, password, role) =>
-    request('/auth/register', { method: 'POST', body: { name, email, password, role }, auth: false }),
+  register: (name, email, password, role, extras = {}) =>
+    request('/auth/register', { method: 'POST', body: { name, email, password, role, ...extras }, auth: false }),
   getMe: () => request('/auth/me'),
   logout: () => request('/auth/logout', { method: 'POST' }),
 
@@ -88,6 +88,16 @@ export const api = {
     const q = date ? `?date=${encodeURIComponent(date)}` : '';
     const data = await request(`/therapists/${id}/slots${q}`, { auth: false });
     return data.slots || [];
+  },
+
+  // ── Therapist self-service (auth) ──
+  getMyTherapistProfile: async () => {
+    const data = await request('/therapists/me');
+    return data.therapist;
+  },
+  updateMyTherapistProfile: async (payload) => {
+    const data = await request('/therapists/me', { method: 'PATCH', body: payload });
+    return data.therapist;
   },
 
   // ── Sessions ──
