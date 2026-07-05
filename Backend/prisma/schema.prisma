@@ -36,11 +36,16 @@ model Therapist {
   id            String   @id @default(uuid())
   userId        String   @unique
   user          User     @relation(fields: [userId], references: [id])
-  title         String
-  credentials   String
-  about         String
-  methodology   String
-  feePkr        Int
+  // Nullable so a therapist can self-register with a minimal profile and
+  // complete the rest (title, education, about, methodology, fee) later in
+  // Settings. A profile is only listed/bookable once all of these are filled
+  // (see isActive gate in therapist.service).
+  title         String?
+  credentials   String?  // shown as "Education" in the UI
+  about         String?
+  methodology   String?
+  licenseNumber String?
+  feePkr        Int?
   rating        Decimal  @default(0)
   reviewCount   Int      @default(0)
   sessionsCount Int      @default(0)

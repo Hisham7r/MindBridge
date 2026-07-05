@@ -6,6 +6,29 @@ const therapistInclude = {
   languages: { select: { language: true } },
 };
 
+function generateInitials(name) {
+  return name
+    .trim()
+    .split(' ')
+    .filter(Boolean)
+    .map(w => w[0].toUpperCase())
+    .join('')
+    .slice(0, 2);
+}
+
+// A profile is listed/bookable only once every required field is filled.
+function isProfileComplete(t) {
+  return Boolean(
+    t.title &&
+    t.credentials &&
+    t.about &&
+    t.methodology &&
+    t.feePkr && t.feePkr > 0 &&
+    t.specializations.length > 0 &&
+    t.languages.length > 0
+  );
+}
+
 export async function getTherapists(filters) {
   const where = { isActive: true };
 
@@ -50,7 +73,8 @@ export async function getTherapistById(id) {
     include: therapistInclude,
   });
 
-  if (!therapist) {
+  // Hidden (incomplete / not-yet-activated) profiles are not publicly viewable.
+  if (!therapist || !therapist.isActive) {
     const error = new Error('Therapist not found.');
     error.status = 404;
     throw error;
@@ -107,4 +131,95 @@ function formatTherapist(t) {
     specializations: t.specializations.map(s => s.name),
     languages: t.languages.map(l => l.language),
   };
+}
+
+// Like formatTherapist but includes the therapist's own private fields
+// (licenseNumber) — used for the Settings form, never for public listings.
+function formatOwnProfile(t) {
+  return {
+    ...formatTherapist(t),
+    licenseNumber: t.licenseNumber,
+  };
+}
+
+// GET /therapists/me — the logged-in therapist's own profile (by userId),
+// regardless of isActive, so they can view/complete it in Settings.
+export async function getMyProfile(userId) {
+  const therapist = await prisma.therapist.findUnique({
+    where: { userId },
+    include: therapistInclude,
+  });
+
+  if (!therapist) {
+    const error = new Error('Therapist profile not found.');
+    error.status = 404;
+    throw error;
+  }
+
+  return formatOwnProfile(therapist);
+}
+
+// PATCH /therapists/me — update the logged-in therapist's profile, then
+// recompute isActive from completeness. Specializations/languages are replaced
+// wholesale (delete + recreate) since they are simple child rows.
+export async function updateMyProfile(userId, data) {
+  const therapist = await prisma.therapist.findUnique({ where: { userId } });
+
+  if (!therapist) {
+    const error = new Error('Therapist profile not found.');
+    error.status = 404;
+    throw error;
+  }
+
+  const updated = await prisma.$transaction(async (tx) => {
+    if (data.name) {
+      await tx.user.update({
+        where: { id: userId },
+        data: { name: data.name, initials: generateInitials(data.name) },
+      });
+    }
+
+    if (data.specializations) {
+      await tx.therapistSpecialization.deleteMany({ where: { therapistId: therapist.id } });
+      if (data.specializations.length) {
+        await tx.therapistSpecialization.createMany({
+          data: data.specializations.map(name => ({ therapistId: therapist.id, name })),
+        });
+      }
+    }
+
+    if (data.languages) {
+      await tx.therapistLanguage.deleteMany({ where: { therapistId: therapist.id } });
+      if (data.languages.length) {
+        await tx.therapistLanguage.createMany({
+          data: data.languages.map(language => ({ therapistId: therapist.id, language })),
+        });
+      }
+    }
+
+    const scalars = {};
+    if (data.title !== undefined) scalars.title = data.title;
+    if (data.credentials !== undefined) scalars.credentials = data.credentials;
+    if (data.about !== undefined) scalars.about = data.about;
+    if (data.methodology !== undefined) scalars.methodology = data.methodology;
+    if (data.licenseNumber !== undefined) scalars.licenseNumber = data.licenseNumber;
+    if (data.feePkr !== undefined) scalars.feePkr = data.feePkr;
+    if (data.track !== undefined) scalars.track = data.track;
+
+    await tx.therapist.update({ where: { id: therapist.id }, data: scalars });
+
+    // Re-read with relations, then set isActive from completeness.
+    const fresh = await tx.therapist.findUnique({
+      where: { id: therapist.id },
+      include: therapistInclude,
+    });
+
+    return tx.therapist.update({
+      where: { id: therapist.id },
+      data: { isActive: isProfileComplete(fresh) },
+      include: therapistInclude,
+    });
+  });
+
+  return formatOwnProfile(updated);
 }

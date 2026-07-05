@@ -26,7 +26,7 @@ function sanitizeUser(user) {
   return safe
 }
 
-export const registerUser = async ({ name, email, password, role }) => {
+export const registerUser = async ({ name, email, password, role, licenseNumber, specializations }) => {
   const existing = await prisma.user.findUnique({ where: { email } })
   if (existing) {
     const error = new Error('An account with this email already exists.')
@@ -37,14 +37,35 @@ export const registerUser = async ({ name, email, password, role }) => {
   const passwordHash = await bcrypt.hash(password, SALT_ROUNDS)
   const initials = generateInitials(name)
 
-  const user = await prisma.user.create({
-    data: {
-      name,
-      email,
-      passwordHash,
-      role,
-      initials,
-    },
+  // Therapists get a profile created alongside the user. It starts INACTIVE
+  // (hidden from browse/booking) with only licence + specializations filled;
+  // the rest of the profile is completed later in Settings, which flips it
+  // active once everything required is present.
+  const user = await prisma.$transaction(async (tx) => {
+    const created = await tx.user.create({
+      data: {
+        name,
+        email,
+        passwordHash,
+        role,
+        initials,
+      },
+    })
+
+    if (role === 'THERAPIST') {
+      await tx.therapist.create({
+        data: {
+          userId: created.id,
+          licenseNumber: licenseNumber || null,
+          isActive: false,
+          specializations: specializations?.length
+            ? { create: specializations.map(name => ({ name })) }
+            : undefined,
+        },
+      })
+    }
+
+    return created
   })
 
   const token = signToken({ id: user.id, email: user.email, role: user.role })
