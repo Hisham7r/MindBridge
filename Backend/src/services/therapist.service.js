@@ -134,11 +134,14 @@ function formatTherapist(t) {
 }
 
 // Like formatTherapist but includes the therapist's own private fields
-// (licenseNumber) — used for the Settings form, never for public listings.
+// (licenseNumber, review status) — used for the Settings form, never for
+// public listings.
 function formatOwnProfile(t) {
   return {
     ...formatTherapist(t),
     licenseNumber: t.licenseNumber,
+    status: t.status,
+    rejectionReason: t.rejectionReason,
   };
 }
 
@@ -159,9 +162,16 @@ export async function getMyProfile(userId) {
   return formatOwnProfile(therapist);
 }
 
-// PATCH /therapists/me — update the logged-in therapist's profile, then
-// recompute isActive from completeness. Specializations/languages are replaced
+// PATCH /therapists/me — update the logged-in therapist's profile, then move
+// it through the review state machine. Specializations/languages are replaced
 // wholesale (delete + recreate) since they are simple child rows.
+//
+// State machine (admin approval gate — completing a profile does NOT publish):
+//   incomplete                    → DRAFT    (hidden)
+//   complete, not yet APPROVED    → PENDING  (hidden, lands in admin queue;
+//                                             clears any old rejection reason)
+//   complete, already APPROVED    → APPROVED (stays live — trusted edits)
+//   was APPROVED, now incomplete  → DRAFT    (auto-unlisted)
 export async function updateMyProfile(userId, data) {
   const therapist = await prisma.therapist.findUnique({ where: { userId } });
 
@@ -208,15 +218,28 @@ export async function updateMyProfile(userId, data) {
 
     await tx.therapist.update({ where: { id: therapist.id }, data: scalars });
 
-    // Re-read with relations, then set isActive from completeness.
+    // Re-read with relations, then advance the review state machine.
     const fresh = await tx.therapist.findUnique({
       where: { id: therapist.id },
       include: therapistInclude,
     });
 
+    const complete = isProfileComplete(fresh);
+    let review;
+    if (!complete) {
+      // Incomplete profiles are never listed, whatever their prior status.
+      review = { status: 'DRAFT', isActive: false };
+    } else if (fresh.status === 'APPROVED') {
+      // Already vetted — edits keep the profile live.
+      review = { status: 'APPROVED', isActive: true };
+    } else {
+      // Complete but unvetted (DRAFT or resubmitted REJECTED) → admin queue.
+      review = { status: 'PENDING', isActive: false, rejectionReason: null };
+    }
+
     return tx.therapist.update({
       where: { id: therapist.id },
-      data: { isActive: isProfileComplete(fresh) },
+      data: review,
       include: therapistInclude,
     });
   });

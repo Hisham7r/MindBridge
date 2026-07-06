@@ -51,6 +51,14 @@ model Therapist {
   sessionsCount Int      @default(0)
   color         String   @default("#3B82F6")
   track         Track    @default(MENTAL_HEALTH)
+  // Review lifecycle: DRAFT (incomplete) → PENDING (submitted, awaiting admin)
+  // → APPROVED (live) | REJECTED (with reason; therapist can edit + resubmit).
+  // isActive remains the single "publicly listed/bookable" flag — only ever
+  // true when status is APPROVED.
+  status          TherapistStatus @default(DRAFT)
+  rejectionReason String?
+  reviewedAt      DateTime?
+  reviewedBy      String?
   isActive      Boolean  @default(true)
   specializations TherapistSpecialization[]
   languages       TherapistLanguage[]
@@ -58,6 +66,13 @@ model Therapist {
   sessions        Session[] @relation("TherapistSessions")
 
   @@map("therapists")
+}
+
+enum TherapistStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum Track {
