@@ -127,7 +127,7 @@ export default function TherapistDashboard() {
       if (updated.name && updated.name !== currentUser?.name) {
         setCurrentUser({ ...currentUser, name: updated.name, initials: updated.initials });
       }
-      setSaveMsg(updated.isActive ? 'active' : 'incomplete');
+      setSaveMsg(updated.status); // 'DRAFT' | 'PENDING' | 'APPROVED' (message per state below)
       setTimeout(() => setSaveMsg(''), 5000);
     } catch (err) {
       const detail = err.details?.[0]?.message;
@@ -600,17 +600,30 @@ export default function TherapistDashboard() {
         {/* Settings Section */}
         {activeSection === 'settings' && (
           <div className="mt-6 max-w-2xl">
-            {/* Listing status banner */}
-            {profile && (
-              profile.isActive ? (
-                <div className="mb-4 rounded-xl border border-green-100 bg-green-50 px-4 py-3 text-sm text-green-700">
-                  ✓ Your profile is <span className="font-semibold">live</span> — patients can find and book you.
-                </div>
-              ) : (
-                <div className="mb-4 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-                  Your profile isn't listed yet. Complete every field below (including a fee above 0) and save to go live.
-                </div>
-              )
+            {/* Review status banner — DRAFT / PENDING / APPROVED / REJECTED */}
+            {profile && profile.status === 'APPROVED' && (
+              <div className="mb-4 rounded-xl border border-green-100 bg-green-50 px-4 py-3 text-sm text-green-700">
+                ✓ Your profile is <span className="font-semibold">live</span> — patients can find and book you. Edits you save stay live.
+              </div>
+            )}
+            {profile && profile.status === 'PENDING' && (
+              <div className="mb-4 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+                ⏳ Your profile is <span className="font-semibold">under review</span> by our team. You'll be notified by email once it's approved.
+              </div>
+            )}
+            {profile && profile.status === 'REJECTED' && (
+              <div className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <p>✗ Your application was <span className="font-semibold">not approved</span>.</p>
+                {profile.rejectionReason && (
+                  <p className="mt-1"><span className="font-semibold">Reason:</span> {profile.rejectionReason}</p>
+                )}
+                <p className="mt-1 text-red-600">You can update your profile below and submit it for review again.</p>
+              </div>
+            )}
+            {profile && profile.status === 'DRAFT' && (
+              <div className="mb-4 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                Your profile isn't listed yet. Complete every field below (including a fee above 0) and submit it for review.
+              </div>
             )}
 
             <div className="card mb-6">
@@ -671,14 +684,17 @@ export default function TherapistDashboard() {
 
             <div className="flex items-center gap-3 mb-6">
               <button onClick={handleSaveProfile} disabled={savingProfile || !pform} className="btn-primary text-sm py-2 px-6 disabled:opacity-60 disabled:cursor-not-allowed">
-                {savingProfile ? 'Saving…' : 'Save Changes'}
+                {savingProfile
+                  ? 'Saving…'
+                  : profile?.status === 'APPROVED' ? 'Save Changes' : 'Submit for Review'}
               </button>
               <button onClick={() => profile && setPform(profileToForm(profile))} disabled={savingProfile || !profile} className="btn-outline text-sm py-2 px-6 disabled:opacity-60 disabled:cursor-not-allowed">
                 Cancel
               </button>
-              {saveMsg === 'active' && <span className="text-sm text-green-600">Saved — your profile is live ✓</span>}
-              {saveMsg === 'incomplete' && <span className="text-sm text-amber-600">Saved. Complete all fields (fee &gt; 0) to go live.</span>}
-              {saveMsg && saveMsg !== 'active' && saveMsg !== 'incomplete' && <span className="text-sm text-red-600">{saveMsg}</span>}
+              {saveMsg === 'APPROVED' && <span className="text-sm text-green-600">Saved — your profile is live ✓</span>}
+              {saveMsg === 'PENDING' && <span className="text-sm text-blue-600">Submitted — your profile is now under review.</span>}
+              {saveMsg === 'DRAFT' && <span className="text-sm text-amber-600">Saved. Complete all fields (fee &gt; 0) to submit for review.</span>}
+              {saveMsg && !['APPROVED', 'PENDING', 'DRAFT'].includes(saveMsg) && <span className="text-sm text-red-600">{saveMsg}</span>}
             </div>
 
             <div className="card mb-6">

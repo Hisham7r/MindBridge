@@ -31,6 +31,13 @@ export default function AdminConsole() {
   const [busyPayId, setBusyPayId] = useState(null);
   const [payError, setPayError] = useState('');
 
+  // Therapist application review queue (Security section)
+  const [applications, setApplications] = useState([]);
+  const [busyAppId, setBusyAppId] = useState(null);
+  const [appError, setAppError] = useState('');
+  const [rejectingId, setRejectingId] = useState(null); // app showing the reason input
+  const [rejectReason, setRejectReason] = useState('');
+
   const [startTime, setStartTime] = useState('08:00');
   const [endTime, setEndTime] = useState('22:00');
   const [hoursSaved, setHoursSaved] = useState(false);
@@ -43,7 +50,8 @@ export default function AdminConsole() {
       api.getAdminStats().catch(() => null),
       api.getAdminPayments().catch(() => []),
       api.getAdminUsers().catch(() => []),
-    ]).then(([s, pays, us]) => {
+      api.getTherapistApplications('PENDING').catch(() => []),
+    ]).then(([s, pays, us, apps]) => {
       if (!active) return;
       setStats(s);
       setPayments((pays || []).map(p => ({
@@ -54,6 +62,7 @@ export default function AdminConsole() {
         status: String(p.status || '').toLowerCase(),
       })));
       setUsers(us || []);
+      setApplications(apps || []);
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, []);
@@ -81,7 +90,39 @@ export default function AdminConsole() {
     }
   }
 
+  async function approveApplication(id) {
+    setBusyAppId(id); setAppError('');
+    try {
+      await api.approveTherapist(id);
+      setApplications(a => a.map(app => (app.id === id ? { ...app, status: 'APPROVED' } : app)));
+    } catch (e) {
+      setAppError(e.message || 'Could not approve application.');
+    } finally {
+      setBusyAppId(null);
+    }
+  }
+  async function rejectApplication(id) {
+    const reason = rejectReason.trim();
+    if (reason.length < 3) {
+      setAppError('Please provide a rejection reason (at least 3 characters).');
+      return;
+    }
+    setBusyAppId(id); setAppError('');
+    try {
+      await api.rejectTherapist(id, reason);
+      setApplications(a => a.map(app => (app.id === id ? { ...app, status: 'REJECTED' } : app)));
+      setRejectingId(null);
+      setRejectReason('');
+    } catch (e) {
+      setAppError(e.message || 'Could not reject application.');
+    } finally {
+      setBusyAppId(null);
+    }
+  }
+
   const pending = payments.filter(p => p.status === 'pending');
+  const pendingApps = applications.filter(a => a.status === 'PENDING');
+  const trackLabel = (t) => (t === 'CAREER' ? 'Career' : 'Mental Health');
 
   // ── Real stat-card values ─────────────────────────────────────────────────
   const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
@@ -536,12 +577,122 @@ export default function AdminConsole() {
           </div>
         )}
 
-        {/* Security Section */}
+        {/* Security Section — Therapist application review queue */}
         {activeSection === 'security' && (
-          <div className="card text-center py-12">
-            <p className="text-3xl mb-4">🔒</p>
-            <h2 className="font-bold text-gray-800 mb-2">Approval Workflows</h2>
-            <p className="text-xs text-gray-400">Therapist vetting, content moderation, and flagged user reviews coming soon.</p>
+          <div className="card">
+            <div className="flex items-center justify-between mb-1">
+              <div>
+                <h2 className="font-bold text-gray-800">Therapist Applications</h2>
+                <p className="text-xs text-gray-400">Vet new therapist profiles before they go live and become bookable.</p>
+              </div>
+              {pendingApps.length > 0 && (
+                <span className="badge bg-brand text-white">{pendingApps.length} Pending</span>
+              )}
+            </div>
+
+            {appError && <p className="text-xs text-red-500 mt-2">{appError}</p>}
+
+            <div className="divide-y divide-gray-50 mt-4">
+              {loading ? (
+                <p className="text-sm text-gray-400 py-3">Loading…</p>
+              ) : applications.length === 0 ? (
+                <p className="text-sm text-gray-400 py-6 text-center">No pending applications — new therapist submissions will appear here.</p>
+              ) : applications.map(app => (
+                <div key={app.id} className={`py-5 px-2 rounded-xl transition-colors ${app.status === 'APPROVED' ? 'bg-green-50' : app.status === 'REJECTED' ? 'bg-red-50' : ''}`}>
+                  {/* Header row: applicant + actions */}
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 text-xs font-bold shrink-0">
+                        {app.initials || '··'}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-800">{app.name}</p>
+                        <p className="text-xs text-gray-400">{app.email}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {app.status === 'PENDING' ? (
+                        <>
+                          <button
+                            onClick={() => approveApplication(app.id)}
+                            disabled={busyAppId === app.id}
+                            className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors disabled:opacity-40"
+                          >
+                            ✓ Approve
+                          </button>
+                          <button
+                            onClick={() => { setRejectingId(rejectingId === app.id ? null : app.id); setRejectReason(''); setAppError(''); }}
+                            disabled={busyAppId === app.id}
+                            className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
+                          >
+                            ✗ Reject
+                          </button>
+                        </>
+                      ) : (
+                        <span className={`badge ${app.status === 'APPROVED' ? 'badge-green' : 'badge-red'} capitalize`}>{app.status.toLowerCase()}</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Application details */}
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2 mt-3">
+                    <div><p className="text-[10px] font-semibold text-gray-400 uppercase">Title</p><p className="text-xs text-gray-700">{app.title || '—'}</p></div>
+                    <div><p className="text-[10px] font-semibold text-gray-400 uppercase">Track</p><p className="text-xs text-gray-700">{trackLabel(app.track)}</p></div>
+                    <div><p className="text-[10px] font-semibold text-gray-400 uppercase">License No</p><p className="text-xs text-gray-700">{app.licenseNumber || '—'}</p></div>
+                    <div><p className="text-[10px] font-semibold text-gray-400 uppercase">Fee</p><p className="text-xs text-gray-700">{app.feePkr ? `PKR ${Number(app.feePkr).toLocaleString()}` : '—'}</p></div>
+                    <div><p className="text-[10px] font-semibold text-gray-400 uppercase">Education</p><p className="text-xs text-gray-700">{app.credentials || '—'}</p></div>
+                    <div><p className="text-[10px] font-semibold text-gray-400 uppercase">Languages</p><p className="text-xs text-gray-700">{(app.languages || []).join(', ') || '—'}</p></div>
+                  </div>
+                  <div className="mt-2">
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase">Specializations</p>
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {(app.specializations || []).map(s => (
+                        <span key={s} className="badge badge-blue text-xs">{s}</span>
+                      ))}
+                    </div>
+                  </div>
+                  {app.about && (
+                    <div className="mt-2">
+                      <p className="text-[10px] font-semibold text-gray-400 uppercase">About</p>
+                      <p className="text-xs text-gray-600 leading-relaxed mt-0.5">{app.about}</p>
+                    </div>
+                  )}
+                  {app.methodology && (
+                    <div className="mt-2">
+                      <p className="text-[10px] font-semibold text-gray-400 uppercase">Methodology</p>
+                      <p className="text-xs text-gray-600 leading-relaxed mt-0.5">{app.methodology}</p>
+                    </div>
+                  )}
+
+                  {/* Inline rejection reason */}
+                  {rejectingId === app.id && app.status === 'PENDING' && (
+                    <div className="mt-3 flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Reason for rejection (sent to the applicant)…"
+                        value={rejectReason}
+                        onChange={e => setRejectReason(e.target.value)}
+                        className="input-field text-xs py-2 flex-1"
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => rejectApplication(app.id)}
+                        disabled={busyAppId === app.id || rejectReason.trim().length < 3}
+                        className="text-xs px-3 py-2 rounded-lg font-semibold bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {busyAppId === app.id ? 'Rejecting…' : 'Confirm Reject'}
+                      </button>
+                      <button
+                        onClick={() => { setRejectingId(null); setRejectReason(''); }}
+                        className="text-xs px-3 py-2 rounded-lg font-semibold border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

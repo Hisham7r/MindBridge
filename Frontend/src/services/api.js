@@ -146,4 +146,12 @@ export const api = {
     const data = await request(`/admin/payments${q}`);
     return data.payments || [];
   },
+  getTherapistApplications: async (status) => {
+    const q = status ? `?status=${encodeURIComponent(status)}` : '';
+    const data = await request(`/admin/therapist-applications${q}`);
+    return data.applications || [];
+  },
+  approveTherapist: (id) => request(`/admin/therapists/${id}/approve`, { method: 'PATCH' }),
+  rejectTherapist: (id, reason) =>
+    request(`/admin/therapists/${id}/reject`, { method: 'PATCH', body: { reason } }),
 };
