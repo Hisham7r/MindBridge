@@ -139,6 +139,10 @@ export const api = {
     const data = await request('/admin/users');
     return data.users || [];
   },
+  getAdminUser: async (id) => {
+    const data = await request(`/admin/users/${id}`);
+    return data.user;
+  },
   getAdminSessions: async () => {
     const data = await request('/admin/sessions');
     return data.sessions || [];
@@ -156,4 +160,12 @@ export const api = {
   approveTherapist: (id) => request(`/admin/therapists/${id}/approve`, { method: 'PATCH' }),
   rejectTherapist: (id, reason) =>
     request(`/admin/therapists/${id}/reject`, { method: 'PATCH', body: { reason } }),
+
+  // Admin therapist roster + suspension
+  getAdminTherapists: async () => {
+    const data = await request('/admin/therapists');
+    return data.therapists || [];
+  },
+  suspendTherapist: (id) => request(`/admin/therapists/${id}/suspend`, { method: 'PATCH' }),
+  reactivateTherapist: (id) => request(`/admin/therapists/${id}/reactivate`, { method: 'PATCH' }),
 };

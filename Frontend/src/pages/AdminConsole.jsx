@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { adminTherapists } from '../data/mockData';
 import { api } from '../services/api';
 import { useRole } from '../context/RoleContext';
 import { getNavByRole, shouldShowBookSessionButton } from '../config/sidebarConfig.jsx';
@@ -38,6 +37,18 @@ export default function AdminConsole() {
   const [rejectingId, setRejectingId] = useState(null); // app showing the reason input
   const [rejectReason, setRejectReason] = useState('');
 
+  // Therapist roster (Overview + People tables) + detail modal
+  const [therapists, setTherapists] = useState([]);
+  const [selectedTherapist, setSelectedTherapist] = useState(null); // opens the profile modal
+  const [busyTherapistId, setBusyTherapistId] = useState(null);
+  const [therapistError, setTherapistError] = useState('');
+
+  // Patients table (People → Patients) + detail modal
+  const [patientSearch, setPatientSearch] = useState('');
+  const [selectedPatient, setSelectedPatient] = useState(null); // loaded patient detail
+  const [loadingPatient, setLoadingPatient] = useState(false);
+  const [patientError, setPatientError] = useState('');
+
   const [startTime, setStartTime] = useState('08:00');
   const [endTime, setEndTime] = useState('22:00');
   const [hoursSaved, setHoursSaved] = useState(false);
@@ -51,7 +62,8 @@ export default function AdminConsole() {
       api.getAdminPayments().catch(() => []),
       api.getAdminUsers().catch(() => []),
       api.getTherapistApplications('PENDING').catch(() => []),
-    ]).then(([s, pays, us, apps]) => {
+      api.getAdminTherapists().catch(() => []),
+    ]).then(([s, pays, us, apps, ther]) => {
       if (!active) return;
       setStats(s);
       setPayments((pays || []).map(p => ({
@@ -63,6 +75,7 @@ export default function AdminConsole() {
       })));
       setUsers(us || []);
       setApplications(apps || []);
+      setTherapists(ther || []);
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, []);
@@ -120,9 +133,67 @@ export default function AdminConsole() {
     }
   }
 
+  // Apply a therapist change to both the roster list and the open modal.
+  function applyTherapistPatch(id, patch) {
+    setTherapists(list => list.map(t => (t.id === id ? { ...t, ...patch } : t)));
+    setSelectedTherapist(sel => (sel && sel.id === id ? { ...sel, ...patch } : sel));
+  }
+  async function handleSuspend(id) {
+    setBusyTherapistId(id); setTherapistError('');
+    try {
+      await api.suspendTherapist(id);
+      applyTherapistPatch(id, { isActive: false });
+    } catch (e) {
+      setTherapistError(e.message || 'Could not suspend therapist.');
+    } finally {
+      setBusyTherapistId(null);
+    }
+  }
+  async function handleReactivate(id) {
+    setBusyTherapistId(id); setTherapistError('');
+    try {
+      await api.reactivateTherapist(id);
+      applyTherapistPatch(id, { isActive: true });
+    } catch (e) {
+      setTherapistError(e.message || 'Could not reactivate therapist.');
+    } finally {
+      setBusyTherapistId(null);
+    }
+  }
+
   const pending = payments.filter(p => p.status === 'pending');
   const pendingApps = applications.filter(a => a.status === 'PENDING');
   const trackLabel = (t) => (t === 'CAREER' ? 'Career' : 'Mental Health');
+
+  // Real display status for a therapist row/modal (review state + suspension).
+  const therapistStatus = (t) => {
+    if (t.status === 'APPROVED') return t.isActive ? { label: 'Active', cls: 'badge-green' } : { label: 'Suspended', cls: 'badge-red' };
+    if (t.status === 'PENDING') return { label: 'Pending', cls: 'badge-gray' };
+    if (t.status === 'REJECTED') return { label: 'Rejected', cls: 'badge-red' };
+    return { label: 'Draft', cls: 'badge-gray' };
+  };
+
+  const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—');
+
+  // Patients derived from the users list (real /admin/users data), searchable by name/email.
+  const patientList = users.filter(u => u.role === 'PATIENT');
+  const filteredPatients = patientList.filter(u => {
+    const q = patientSearch.trim().toLowerCase();
+    if (!q) return true;
+    return (u.name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q);
+  });
+
+  async function openPatient(id) {
+    setLoadingPatient(true); setPatientError('');
+    try {
+      const detail = await api.getAdminUser(id);
+      setSelectedPatient(detail);
+    } catch (e) {
+      setPatientError(e.message || 'Could not load patient.');
+    } finally {
+      setLoadingPatient(false);
+    }
+  }
 
   // ── Real stat-card values ─────────────────────────────────────────────────
   const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
@@ -350,11 +421,10 @@ export default function AdminConsole() {
           </div>
         </div>
 
-        {/* Therapist Stats Table in Overview */}
+        {/* Therapist Performance Snapshot (real data) */}
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-bold text-gray-800">Therapist Performance Snapshot</h2>
-            <button className="btn-outline text-xs py-2">+ Add Therapist</button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -370,24 +440,26 @@ export default function AdminConsole() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {adminTherapists.map(t => (
-                  <tr key={t.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 font-medium text-sm text-gray-800">{t.name}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{t.patientsToday}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{t.patientsWeek}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{t.totalAllTime}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{t.upcoming}</td>
-                    <td className="px-4 py-3">
-                      <span className={`badge ${t.status === 'Active' ? 'badge-green' : 'badge-gray'}`}>
-                        {t.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 flex gap-2">
-                      <button className="text-brand text-xs hover:underline font-medium">Edit</button>
-                      <button className="text-red-400 text-xs hover:underline font-medium">Suspend</button>
-                    </td>
-                  </tr>
-                ))}
+                {loading ? (
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400">Loading…</td></tr>
+                ) : therapists.length === 0 ? (
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400">No therapists yet.</td></tr>
+                ) : therapists.map(t => {
+                  const st = therapistStatus(t);
+                  return (
+                    <tr key={t.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3 font-medium text-sm text-gray-800">{t.name}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{t.patientsToday}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{t.patientsWeek}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{t.patientsAllTime}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{t.upcomingSessions}</td>
+                      <td className="px-4 py-3"><span className={`badge ${st.cls}`}>{st.label}</span></td>
+                      <td className="px-4 py-3">
+                        <button onClick={() => { setTherapistError(''); setSelectedTherapist(t); }} className="text-brand text-xs hover:underline font-medium">View</button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -415,42 +487,80 @@ export default function AdminConsole() {
                       <th className="text-left px-4 py-3">Therapist Name</th>
                       <th className="text-left px-4 py-3">Specialization</th>
                       <th className="text-left px-4 py-3">Patients</th>
-                      <th className="text-left px-4 py-3">Rating</th>
                       <th className="text-left px-4 py-3">Status</th>
                       <th className="text-left px-4 py-3">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {adminTherapists.map(t => (
-                      <tr key={t.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-3 font-medium text-sm text-gray-800">{t.name}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">Mental Health & Wellness</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{t.totalAllTime}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">4.8 ⭐</td>
-                        <td className="px-4 py-3">
-                          <span className={`badge ${t.status === 'Active' ? 'badge-green' : 'badge-gray'}`}>
-                            {t.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 flex gap-2">
-                          <button className="text-brand text-xs hover:underline font-medium">View</button>
-                          <button className="text-brand text-xs hover:underline font-medium">Edit</button>
-                          <button className="text-red-400 text-xs hover:underline font-medium">Suspend</button>
-                        </td>
-                      </tr>
-                    ))}
+                    {loading ? (
+                      <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">Loading…</td></tr>
+                    ) : therapists.length === 0 ? (
+                      <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">No therapists yet.</td></tr>
+                    ) : therapists.map(t => {
+                      const st = therapistStatus(t);
+                      return (
+                        <tr key={t.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-4 py-3 font-medium text-sm text-gray-800">{t.name}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{t.specializations?.length ? t.specializations.join(', ') : '—'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{t.patientsAllTime}</td>
+                          <td className="px-4 py-3"><span className={`badge ${st.cls}`}>{st.label}</span></td>
+                          <td className="px-4 py-3">
+                            <button onClick={() => { setTherapistError(''); setSelectedTherapist(t); }} className="text-brand text-xs hover:underline font-medium">View</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             ) : (
-              <div className="bg-gray-50 rounded-lg p-8 text-center">
-                <p className="text-gray-600 text-sm mb-4">🔍 Searchable patient database</p>
-                <input
-                  type="text"
-                  placeholder="Search patients by name, email, or ID..."
-                  className="input-field w-full max-w-md mb-4"
-                />
-                <p className="text-xs text-gray-400">Patient management dashboard coming soon</p>
+              <div>
+                <div className="mb-4">
+                  <input
+                    type="text"
+                    value={patientSearch}
+                    onChange={e => setPatientSearch(e.target.value)}
+                    placeholder="Search patients by name or email…"
+                    className="input-field w-full max-w-md"
+                  />
+                </div>
+                {patientError && <p className="text-xs text-red-500 mb-2">{patientError}</p>}
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-gray-50 text-xs font-semibold text-gray-400 uppercase tracking-wide border-b border-gray-100">
+                        <th className="text-left px-4 py-3">Name</th>
+                        <th className="text-left px-4 py-3">Email</th>
+                        <th className="text-left px-4 py-3">Phone</th>
+                        <th className="text-left px-4 py-3">Verified</th>
+                        <th className="text-left px-4 py-3">Joined</th>
+                        <th className="text-left px-4 py-3">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {loading ? (
+                        <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">Loading…</td></tr>
+                      ) : filteredPatients.length === 0 ? (
+                        <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">{patientSearch ? 'No patients match your search.' : 'No patients yet.'}</td></tr>
+                      ) : filteredPatients.map(p => (
+                        <tr key={p.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-4 py-3 font-medium text-sm text-gray-800">{p.name}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{p.email}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{p.phone || '—'}</td>
+                          <td className="px-4 py-3">
+                            <span className={`badge ${p.isVerified ? 'badge-green' : 'badge-gray'}`}>{p.isVerified ? 'Verified' : 'Unverified'}</span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{fmtDate(p.createdAt)}</td>
+                          <td className="px-4 py-3">
+                            <button onClick={() => openPatient(p.id)} disabled={loadingPatient} className="text-brand text-xs hover:underline font-medium disabled:opacity-50">
+                              {loadingPatient ? 'Loading…' : 'View'}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>
@@ -718,6 +828,153 @@ export default function AdminConsole() {
           </div>
         </div>
         <p className="text-center text-xs text-gray-300 mt-2">ADMINISTRATIVE ACCESS ONLY</p>
+
+        {/* Therapist detail modal (opened by the "View" action) */}
+        {selectedTherapist && (() => {
+          const t = selectedTherapist;
+          const st = therapistStatus(t);
+          const canToggle = t.status === 'APPROVED';
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" onClick={() => setSelectedTherapist(null)}>
+              <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                {/* Header */}
+                <div className="flex items-start justify-between p-6 border-b border-gray-100">
+                  <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center text-brand font-bold text-lg shrink-0">{t.initials || '··'}</div>
+                    <div>
+                      <h3 className="font-bold text-gray-900 text-lg">{t.name}</h3>
+                      <p className="text-sm text-gray-500">{t.title || 'Therapist'}</p>
+                      <p className="text-xs text-gray-400">{t.email}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className={`badge ${st.cls}`}>{st.label}</span>
+                    <button onClick={() => setSelectedTherapist(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+                  </div>
+                </div>
+
+                {/* Real stats */}
+                <div className="grid grid-cols-4 gap-3 p-6 border-b border-gray-100">
+                  {[
+                    { label: 'Patients', value: t.patientsAllTime },
+                    { label: 'Upcoming', value: t.upcomingSessions },
+                    { label: 'This Week', value: t.patientsWeek },
+                    { label: 'Today', value: t.patientsToday },
+                  ].map(s => (
+                    <div key={s.label} className="text-center">
+                      <p className="text-2xl font-bold text-gray-900">{s.value}</p>
+                      <p className="text-xs text-gray-400">{s.label}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Profile */}
+                <div className="p-6 space-y-4">
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                    <div><p className="text-[10px] font-semibold text-gray-400 uppercase">Track</p><p className="text-sm text-gray-700">{trackLabel(t.track)}</p></div>
+                    <div><p className="text-[10px] font-semibold text-gray-400 uppercase">Fee</p><p className="text-sm text-gray-700">{t.feePkr ? `PKR ${Number(t.feePkr).toLocaleString()}` : '—'}</p></div>
+                    <div><p className="text-[10px] font-semibold text-gray-400 uppercase">License No</p><p className="text-sm text-gray-700">{t.licenseNumber || '—'}</p></div>
+                    <div><p className="text-[10px] font-semibold text-gray-400 uppercase">Education</p><p className="text-sm text-gray-700">{t.credentials || '—'}</p></div>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase mb-1">Specializations</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(t.specializations || []).length ? t.specializations.map(s => <span key={s} className="badge badge-blue text-xs">{s}</span>) : <span className="text-sm text-gray-400">—</span>}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase mb-1">Languages</p>
+                    <p className="text-sm text-gray-700">{(t.languages || []).length ? t.languages.join(', ') : '—'}</p>
+                  </div>
+                  {t.about && (<div><p className="text-[10px] font-semibold text-gray-400 uppercase mb-1">About</p><p className="text-sm text-gray-600 leading-relaxed">{t.about}</p></div>)}
+                  {t.methodology && (<div><p className="text-[10px] font-semibold text-gray-400 uppercase mb-1">Methodology</p><p className="text-sm text-gray-600 leading-relaxed">{t.methodology}</p></div>)}
+                  {t.status === 'REJECTED' && t.rejectionReason && (<div><p className="text-[10px] font-semibold text-gray-400 uppercase mb-1">Rejection Reason</p><p className="text-sm text-red-600">{t.rejectionReason}</p></div>)}
+                </div>
+
+                {/* Suspend / Reactivate */}
+                <div className="flex items-center justify-between gap-3 p-6 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
+                  {therapistError ? <span className="text-sm text-red-600">{therapistError}</span> : <span />}
+                  {canToggle ? (
+                    t.isActive ? (
+                      <button onClick={() => handleSuspend(t.id)} disabled={busyTherapistId === t.id} className="text-sm font-semibold px-5 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50">
+                        {busyTherapistId === t.id ? 'Suspending…' : 'Suspend therapist'}
+                      </button>
+                    ) : (
+                      <button onClick={() => handleReactivate(t.id)} disabled={busyTherapistId === t.id} className="text-sm font-semibold px-5 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors disabled:opacity-50">
+                        {busyTherapistId === t.id ? 'Reactivating…' : 'Reactivate therapist'}
+                      </button>
+                    )
+                  ) : (
+                    <span className="text-xs text-gray-400">Suspension applies to approved therapists only.</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Patient detail modal (opened by the Patients "View" action) — read-only */}
+        {selectedPatient && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" onClick={() => setSelectedPatient(null)}>
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              {/* Header */}
+              <div className="flex items-start justify-between p-6 border-b border-gray-100">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center text-brand font-bold text-lg shrink-0">{selectedPatient.initials || '··'}</div>
+                  <div>
+                    <h3 className="font-bold text-gray-900 text-lg">{selectedPatient.name}</h3>
+                    <p className="text-sm text-gray-500">{selectedPatient.email}</p>
+                    <p className="text-xs text-gray-400">{selectedPatient.phone || 'No phone'} · Joined {fmtDate(selectedPatient.createdAt)}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className={`badge ${selectedPatient.isVerified ? 'badge-green' : 'badge-gray'}`}>{selectedPatient.isVerified ? 'Verified' : 'Unverified'}</span>
+                  <button onClick={() => setSelectedPatient(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+                </div>
+              </div>
+
+              {/* Sessions */}
+              <div className="p-6 border-b border-gray-100">
+                <h4 className="text-sm font-bold text-gray-800 mb-3">Sessions ({selectedPatient.sessions.length})</h4>
+                {selectedPatient.sessions.length === 0 ? (
+                  <p className="text-sm text-gray-400">No sessions booked yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {selectedPatient.sessions.map(s => (
+                      <div key={s.id} className="flex items-center justify-between text-sm border border-gray-100 rounded-lg px-3 py-2">
+                        <div>
+                          <p className="font-medium text-gray-800">{s.therapistName || 'Therapist'}</p>
+                          <p className="text-xs text-gray-400">{s.slotDatetime ? fmtDate(s.slotDatetime) : '—'} · {s.type || 'Session'}</p>
+                        </div>
+                        <span className="badge badge-gray text-xs capitalize">{String(s.status).replace('_', ' ').toLowerCase()}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Payments */}
+              <div className="p-6">
+                <h4 className="text-sm font-bold text-gray-800 mb-3">Payments ({selectedPatient.payments.length})</h4>
+                {selectedPatient.payments.length === 0 ? (
+                  <p className="text-sm text-gray-400">No payments yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {selectedPatient.payments.map(p => (
+                      <div key={p.id} className="flex items-center justify-between text-sm border border-gray-100 rounded-lg px-3 py-2">
+                        <div>
+                          <p className="font-medium text-gray-800">PKR {Number(p.totalPkr || 0).toLocaleString()}</p>
+                          <p className="text-xs text-gray-400">Txn: {p.txnId || '—'} · {fmtDate(p.createdAt)}</p>
+                        </div>
+                        <span className={`badge ${p.status === 'APPROVED' ? 'badge-green' : p.status === 'REJECTED' ? 'badge-red' : 'badge-gray'} text-xs capitalize`}>{String(p.status).toLowerCase()}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

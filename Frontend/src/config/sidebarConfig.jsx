@@ -8,10 +8,10 @@
 
 export const ADMIN_NAV = [
   {
-    label: 'Intelligence',
+    label: 'Overview',
     icon: '⊞',
     section: 'overview',
-    purpose: 'High-level KPIs and platform analytics'
+    purpose: 'Platform snapshot: key metrics, payments, and therapists'
   },
   {
     label: 'People',
