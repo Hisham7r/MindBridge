@@ -3,6 +3,7 @@ import auth from '../middleware/auth.js'
 import {
   register,
   login,
+  googleAuth,
   logout,
   getMe,
   updateMe,
@@ -12,6 +13,7 @@ const router = Router()
 
 router.post('/register', register)
 router.post('/login', login)
+router.post('/google', googleAuth)
 router.post('/logout', auth, logout)
 router.get('/me', auth, getMe)
 router.patch('/me', auth, updateMe)

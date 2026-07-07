@@ -53,6 +53,15 @@ export const registerSchema = z
     }
   })
 
+// "Continue with Google": the browser sends Google's signed ID token
+// (called `credential` by Google Identity Services). Verification happens
+// server-side in auth.service — this only checks the field is present.
+export const googleAuthSchema = z.object({
+  credential: z
+    .string()
+    .min(1, 'Google credential is required'),
+})
+
 export const loginSchema = z.object({
   email: z
     .string()

@@ -8,7 +8,7 @@
 
 
 import * as authService from '../services/auth.service.js'
-import { registerSchema, loginSchema, updateProfileSchema }
+import { registerSchema, loginSchema, updateProfileSchema, googleAuthSchema }
   from '../validators/auth.validator.js'
 
 export const register = async (req, res, next) => {
@@ -53,6 +53,31 @@ export const login = async (req, res, next) => {
 
     return res.status(200).json({
       message: 'Login successful.',
+      user,
+      token,
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
+export const googleAuth = async (req, res, next) => {
+  try {
+    const parsed = googleAuthSchema.safeParse(req.body)
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: 'Validation failed',
+        details: parsed.error.issues.map(e => ({
+          field: e.path.join('.'),
+          message: e.message,
+        })),
+      })
+    }
+
+    const { user, token } = await authService.googleAuth(parsed.data)
+
+    return res.status(200).json({
+      message: 'Signed in with Google.',
       user,
       token,
     })
