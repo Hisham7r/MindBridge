@@ -50,6 +50,15 @@ export function RoleProvider({ children }) {
     return toUiRole(user.role);
   }
 
+  // "Continue with Google": exchange Google's ID token for our app JWT.
+  async function loginWithGoogle(credential) {
+    const { user, token } = await api.googleAuth(credential);
+    setToken(token);
+    setCurrentUser(mapUser(user));
+    setRole(toUiRole(user.role));
+    return toUiRole(user.role);
+  }
+
   function logout() {
     clearToken();
     setCurrentUser(null);
@@ -58,7 +67,7 @@ export function RoleProvider({ children }) {
 
   return (
     <RoleContext.Provider
-      value={{ role, setRole, currentUser, setCurrentUser, login, register, logout, loading }}
+      value={{ role, setRole, currentUser, setCurrentUser, login, register, loginWithGoogle, logout, loading }}
     >
       {children}
     </RoleContext.Provider>

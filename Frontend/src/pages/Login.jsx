@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { GoogleLogin } from '@react-oauth/google';
 import { useRole } from '../context/RoleContext';
 
 const DASHBOARD_BY_ROLE = {
@@ -8,11 +9,14 @@ const DASHBOARD_BY_ROLE = {
   patient: '/dashboard/patient',
 };
 
+// The Google button only renders when a Client ID is configured.
+const GOOGLE_ENABLED = Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID);
+
 export default function Login() {
   const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const { login } = useRole();
+  const { login, loginWithGoogle } = useRole();
   const navigate = useNavigate();
 
   async function handleSubmit(e) {
@@ -26,6 +30,17 @@ export default function Login() {
       setError(err.message || 'Login failed. Please try again.');
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  // Google users have no password — this is their only way back in.
+  async function handleGoogleSuccess(credentialResponse) {
+    setError('');
+    try {
+      const uiRole = await loginWithGoogle(credentialResponse.credential);
+      navigate(DASHBOARD_BY_ROLE[uiRole] || '/');
+    } catch (err) {
+      setError(err.message || 'Google sign-in failed. Please try again.');
     }
   }
 
@@ -78,6 +93,25 @@ export default function Login() {
               {submitting ? 'Signing in…' : 'Sign In →'}
             </button>
           </form>
+
+          {GOOGLE_ENABLED && (
+            <>
+              <div className="relative my-6">
+                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200" /></div>
+                <div className="relative flex justify-center"><span className="bg-white px-3 text-xs text-gray-400 font-medium">OR CONTINUE WITH</span></div>
+              </div>
+
+              <div className="flex justify-center">
+                <GoogleLogin
+                  onSuccess={handleGoogleSuccess}
+                  onError={() => setError('Google sign-in failed. Please try again.')}
+                  text="continue_with"
+                  shape="pill"
+                  width="280"
+                />
+              </div>
+            </>
+          )}
 
           <p className="text-center text-sm text-gray-500 mt-6">
             Don't have an account?{' '}

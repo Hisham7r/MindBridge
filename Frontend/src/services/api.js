@@ -65,6 +65,8 @@ export const api = {
     request('/auth/login', { method: 'POST', body: { email, password }, auth: false }),
   register: (name, email, password, role, extras = {}) =>
     request('/auth/register', { method: 'POST', body: { name, email, password, role, ...extras }, auth: false }),
+  googleAuth: (credential) =>
+    request('/auth/google', { method: 'POST', body: { credential }, auth: false }),
   getMe: () => request('/auth/me'),
   logout: () => request('/auth/logout', { method: 'POST' }),
 
