@@ -230,8 +230,10 @@ export async function updateMyProfile(userId, data) {
       // Incomplete profiles are never listed, whatever their prior status.
       review = { status: 'DRAFT', isActive: false };
     } else if (fresh.status === 'APPROVED') {
-      // Already vetted — edits keep the profile live.
-      review = { status: 'APPROVED', isActive: true };
+      // Already vetted — edits keep the profile live, but PRESERVE an admin
+      // suspension (isActive=false) so a therapist can't un-suspend themselves
+      // by re-saving their profile.
+      review = { status: 'APPROVED', isActive: fresh.isActive };
     } else {
       // Complete but unvetted (DRAFT or resubmitted REJECTED) → admin queue.
       review = { status: 'PENDING', isActive: false, rejectionReason: null };

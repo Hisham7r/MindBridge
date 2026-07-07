@@ -244,6 +244,150 @@ export const rejectTherapist = async (id, adminId, reason) => {
 }
 
 /**
+ * Full therapist roster for the admin dashboard — every therapist, any status,
+ * with profile fields and REAL stats derived from their sessions. "Patients"
+ * counts are DISTINCT patients who actually have a session with the therapist,
+ * so a brand-new therapist correctly shows 0 and the number grows as patients book.
+ */
+export const listTherapists = async () => {
+  const therapists = await prisma.therapist.findMany({
+    include: {
+      user: { select: { name: true, email: true, initials: true, createdAt: true } },
+      specializations: { select: { name: true } },
+      languages: { select: { language: true } },
+      sessions: { select: { patientId: true, slot: { select: { slotDatetime: true } } } },
+    },
+    orderBy: { rating: 'desc' },
+  })
+
+  const now = new Date()
+  const startToday = new Date(now); startToday.setHours(0, 0, 0, 0)
+  const endToday = new Date(startToday); endToday.setDate(endToday.getDate() + 1)
+  // Monday-based start of the current week.
+  const weekStart = new Date(startToday)
+  weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7))
+  const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 7)
+
+  const distinct = (rows) => new Set(rows.map(s => s.patientId)).size
+
+  return therapists.map(t => {
+    const dated = t.sessions
+      .filter(s => s.slot)
+      .map(s => ({ patientId: s.patientId, dt: new Date(s.slot.slotDatetime) }))
+
+    return {
+      id: t.id,
+      name: t.user.name,
+      email: t.user.email,
+      initials: t.user.initials,
+      registeredAt: t.user.createdAt,
+      title: t.title,
+      licenseNumber: t.licenseNumber,
+      credentials: t.credentials,
+      about: t.about,
+      methodology: t.methodology,
+      feePkr: t.feePkr,
+      track: t.track,
+      status: t.status,
+      isActive: t.isActive,
+      rejectionReason: t.rejectionReason,
+      specializations: t.specializations.map(s => s.name),
+      languages: t.languages.map(l => l.language),
+      // Real, session-derived stats (distinct patients; 0 for a new therapist).
+      patientsAllTime: distinct(dated),
+      patientsToday: distinct(dated.filter(s => s.dt >= startToday && s.dt < endToday)),
+      patientsWeek: distinct(dated.filter(s => s.dt >= weekStart && s.dt < weekEnd)),
+      upcomingSessions: dated.filter(s => s.dt >= now).length,
+    }
+  })
+}
+
+/**
+ * Suspend (isActive=false) or reactivate (isActive=true) an APPROVED therapist.
+ * Suspending removes them from the public listing and makes them unbookable
+ * while preserving their APPROVED status, so reactivating is a clean flip.
+ */
+export const setTherapistActive = async (id, isActive) => {
+  const therapist = await prisma.therapist.findUnique({ where: { id } })
+
+  if (!therapist) {
+    const error = new Error('Therapist not found.')
+    error.status = 404
+    throw error
+  }
+
+  if (therapist.status !== 'APPROVED') {
+    const error = new Error(`Only approved therapists can be suspended or reactivated (current status: ${therapist.status}).`)
+    error.status = 409
+    throw error
+  }
+
+  return prisma.therapist.update({ where: { id }, data: { isActive } })
+}
+
+/**
+ * One user's account detail for the admin — identity plus their patient-side
+ * activity (sessions booked + payments made). Read-only; powers the Patients
+ * table's "View" action.
+ */
+export const getUserDetail = async (id) => {
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: {
+      id: true, name: true, email: true, phone: true, language: true,
+      role: true, isVerified: true, createdAt: true, initials: true,
+      patientSessions: {
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true, status: true, sessionNumber: true, sessionType: true, createdAt: true,
+          slot: { select: { slotDatetime: true } },
+          therapist: { select: { title: true, user: { select: { name: true } } } },
+          payment: { select: { status: true } },
+        },
+      },
+      payments: {
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, totalPkr: true, status: true, txnId: true, createdAt: true },
+      },
+    },
+  })
+
+  if (!user) {
+    const error = new Error('User not found.')
+    error.status = 404
+    throw error
+  }
+
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    phone: user.phone,
+    language: user.language,
+    role: user.role,
+    isVerified: user.isVerified,
+    createdAt: user.createdAt,
+    initials: user.initials,
+    sessions: user.patientSessions.map(s => ({
+      id: s.id,
+      status: s.status,
+      sessionNumber: s.sessionNumber,
+      type: s.sessionType,
+      slotDatetime: s.slot ? s.slot.slotDatetime : null,
+      therapistName: s.therapist ? s.therapist.user.name : null,
+      paymentStatus: s.payment ? s.payment.status : null,
+    })),
+    payments: user.payments.map(p => ({
+      id: p.id,
+      totalPkr: p.totalPkr,
+      status: p.status,
+      txnId: p.txnId,
+      createdAt: p.createdAt,
+    })),
+  }
+}
+
+/**
  * All payments, newest first. Optionally filtered by status.
  */
 export const listPayments = async (status) => {

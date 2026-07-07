@@ -90,6 +90,42 @@ export const rejectTherapist = async (req, res, next) => {
   }
 }
 
+export const listTherapists = async (req, res, next) => {
+  try {
+    const therapists = await adminService.listTherapists()
+    return res.status(200).json({ therapists })
+  } catch (err) {
+    next(err)
+  }
+}
+
+export const getUserDetail = async (req, res, next) => {
+  try {
+    const user = await adminService.getUserDetail(req.params.id)
+    return res.status(200).json({ user })
+  } catch (err) {
+    next(err)
+  }
+}
+
+export const suspendTherapist = async (req, res, next) => {
+  try {
+    const therapist = await adminService.setTherapistActive(req.params.id, false)
+    return res.status(200).json({ message: 'Therapist suspended.', therapist })
+  } catch (err) {
+    next(err)
+  }
+}
+
+export const reactivateTherapist = async (req, res, next) => {
+  try {
+    const therapist = await adminService.setTherapistActive(req.params.id, true)
+    return res.status(200).json({ message: 'Therapist reactivated.', therapist })
+  } catch (err) {
+    next(err)
+  }
+}
+
 export const listPayments = async (req, res, next) => {
   try {
     const { status } = req.query
