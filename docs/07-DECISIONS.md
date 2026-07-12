@@ -185,3 +185,31 @@
   into this `docs/` set.
 - **Consequences:** A fresh clone (or new AI account) gets the full context entry point automatically.
   Keep `CLAUDE.md` lean — it's loaded every session; depth belongs in `docs/`.
+
+## ADR-021 — Availability = weekly recurring rules → generated slots (self-healing window)
+- **Context:** Slots were seed-only: a one-time 7-day batch that silently expired (the app became fully
+  unbookable once the window passed), and self-registered therapists never got slots at all. For
+  production, therapists must own their hours.
+- **Decision:** New `TherapistAvailability` model — one row per enabled weekday (`dayOfWeek`,
+  `startTime`, `endTime`), set by the therapist in Settings. Concrete hourly `AvailabilitySlot` rows are
+  generated from the rules over a rolling **14-day** window: full regenerate on save (future *unbooked*
+  slots replaced; **booked slots never touched**), plus an idempotent **top-up on every public slots
+  read** (`ensureSlotWindow`) so the window can never silently expire again.
+- **Rejected:** Manual one-off slot entry (same "someone forgets to top up" failure mode as the seed);
+  a cron/scheduled generator (no job infra in this stack; read-time top-up achieves the same with zero
+  infra at this scale).
+- **Consequences:** The seed script is no longer the availability source; a therapist with no rules is
+  simply unbookable until they set hours. Times are "HH:MM" server-local (PKT). Endpoints:
+  `GET/PUT /therapists/me/availability`.
+
+## ADR-022 — Removed the admin "global operation hours" (therapists own their hours)
+- **Context:** The admin console had an "Operation Hours" card (Overview + an Operations tab) implying a
+  platform-wide session window. It was **entirely cosmetic** — the button set a local state and showed
+  "✅ updated" without any backend. With ADR-021, availability belongs to therapists.
+- **Decision:** Deleted the card and the now-empty Operations tab. In a marketplace, the platform vets
+  *who* can list (approval gate); the supplier decides *when* they work.
+- **Rejected (deferred):** A real platform-wide constraint (e.g. "sessions only 08:00–22:00 PKT") — a
+  legitimate concept, but it's a *validation clamp on therapist rules*, not a separate schedule; YAGNI
+  until a real need appears. Clean bolt-on later: a settings row + one rule in `availabilitySchema`.
+- **Consequences:** Admin nav = Overview, People, Finance, Security, Support. No fake controls remain in
+  the admin console.

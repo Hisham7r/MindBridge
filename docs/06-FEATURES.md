@@ -42,8 +42,21 @@ Files: `Backend`: `auth.service`, `auth.validator` (therapist superRefine), `the
 - `GET /therapists` — lists `isActive:true` therapists (+ optional track/specialization/language/fee
   filters), ordered by rating. `formatTherapist` flattens nested rows, casts Decimal→Number.
 - `GET /therapists/:id` — single therapist; **404 if not `isActive`** (hidden/incomplete not public).
-- `GET /therapists/:id/slots` — unbooked, future slots.
+- `GET /therapists/:id/slots` — unbooked, future slots. **Self-healing:** tops up the therapist's
+  rolling slot window from their weekly rules before answering (`ensureSlotWindow`).
 - Frontend: `pages/Therapists.jsx`, `TherapistProfile.jsx`, `CareerTherapy.jsx`, `components/TherapistCard.jsx`.
+
+## B2. Therapist availability management ⭐ (production slot source)
+Therapists own their calendar — slots no longer depend on the seed script (ADR-021).
+- `GET /therapists/me/availability` (THERAPIST) — weekly rules for the Settings form.
+- `PUT /therapists/me/availability` (THERAPIST) — replaces the weekly schedule wholesale
+  (`availabilitySchema`: ≤1 rule per weekday, HH:MM times, ≥1 bookable hour), then rebuilds the future
+  calendar: future **unbooked** slots deleted + regenerated hourly from the rules over a **14-day
+  window**; **booked slots are never touched** (changing hours can't destroy an appointment).
+- Settings UI (`TherapistDashboard.jsx`): 7-day editor (checkbox per day + start/end time pickers) +
+  "Save Availability". A therapist with no rules simply has no bookable slots.
+- E2E-verified: set hours → slots appear (correct hours/days, none past) → patient books → hours
+  changed → booking survives, free slots regenerate to the new hours.
 
 ## C. Session booking
 - `POST /sessions` (PATIENT) — `session.service.createSession`: verify therapist active → **transaction**:
@@ -69,7 +82,12 @@ Files: `Backend`: `auth.service`, `auth.validator` (therapist superRefine), `the
 
 ## E. Admin console (`/api/admin`, all `auth + requireRole('ADMIN')`)
 Sidebar sections (`config/sidebarConfig.jsx` → `ADMIN_NAV`): **Overview** (renamed from "Intelligence"),
-People (Therapists / Patients), Finance, Operations, **Security**, Support.
+People (Therapists / Patients), Finance, **Security**, Support. (The former Operations tab and its fake
+"global operation hours" card were removed — ADR-022.)
+
+**Payment queues are pending-only:** Overview's Payment Verification shows only PENDING deposits
+("all caught up" when empty) and its "View All Transactions →" navigates to Finance. Finance shows the
+pending queue plus a collapsible **View All (N processed)** history of approved/rejected payments.
 
 - `GET /admin/stats` — user/session/payment counts + revenue (Σ APPROVED payments).
 - `GET /admin/users` · `GET /admin/users/:id` — all users; single user detail = identity + their

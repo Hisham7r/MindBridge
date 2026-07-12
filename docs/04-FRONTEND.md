@@ -37,7 +37,7 @@ No Redux. Two tiers:
 - **`config/sidebarConfig.jsx`** — role-based nav arrays `ADMIN_NAV` / `THERAPIST_NAV` / `PATIENT_NAV`
   (each `{label, icon/svg, section, purpose[, subItems]}`), plus `getNavByRole(role)` and
   `shouldShowBookSessionButton(role)`. Admin sections: `overview` (label **"Overview"**), `people`
-  (subitems therapists/patients), `finance`, `operations`, `security`, `support`. Dashboards render
+  (subitems therapists/patients), `finance`, `security`, `support`. Dashboards render
   sections by an `activeSection` state that maps to these `section` keys.
 
 ## Components
@@ -55,12 +55,14 @@ No Redux. Two tiers:
   `payment.status === 'REJECTED'` (ADR-019); dynamic next-session banner (EN+UR); past-sessions table.
 - **TherapistDashboard** — sections: overview / appointments / patients / **settings**. Settings loads &
   saves the real profile (`getMyTherapistProfile`/`updateMyTherapistProfile`), shows the 4-state review
-  banner, "Submit for Review" button; availability card is disabled ("Coming soon"). Sessions: Mark
-  Complete (`updateSessionStatus`), Zoom link (`setSessionZoomLink`).
-- **AdminConsole** — fully real (ADR-018): Overview (stats + payment verification), People (Therapists
-  roster with View→detail modal + Suspend/Reactivate; Patients with name/email search + View→detail
-  modal), Security (therapist applications approve/reject), Finance. Loads everything in one `Promise.all`
-  on mount.
+  banner, "Submit for Review" button; **Availability Hours is a real weekly editor** (7-day checkboxes +
+  time pickers → `getMyAvailability`/`updateMyAvailability`, regenerates the bookable calendar). Sessions:
+  Mark Complete (`updateSessionStatus`), Zoom link (`setSessionZoomLink`).
+- **AdminConsole** — fully real (ADR-018): Overview (stats + **pending-only** payment queue; "View All
+  Transactions →" navigates to Finance), People (Therapists roster with View→detail modal +
+  Suspend/Reactivate; Patients with name/email search + View→detail modal), Security (therapist
+  applications approve/reject), Finance (pending queue + collapsible processed history). No Operations
+  tab (ADR-022). Loads everything in one `Promise.all` on mount.
 
 ## Conventions
 - Function components + hooks. Keep JSX/styling identical when swapping mock→real data; only change data

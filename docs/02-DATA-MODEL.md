@@ -58,8 +58,16 @@ wholesale (delete + recreate) when a therapist edits their profile.
 
 ### AvailabilitySlot
 `{ id, therapistId, slotDatetime, isBooked=false }`. `Session.slotId` is unique → **one booking per
-slot**. Currently created **only by the seed script** — no therapist-facing slot management yet (biggest
-gap; see `09-STATE.md`).
+slot**. Generated automatically from the therapist's weekly `TherapistAvailability` rules on a rolling
+14-day window (see below + ADR-021); the seed script also creates some for the demo therapists.
+
+### TherapistAvailability
+`{ id, therapistId, dayOfWeek (0=Sun…6=Sat), startTime "HH:MM", endTime "HH:MM" }`, unique per
+`(therapistId, dayOfWeek)`. The therapist's **recurring weekly working hours**, set in Settings.
+Concrete hourly `AvailabilitySlot` rows are generated from these rules: regenerated on save (future
+unbooked slots replaced; **booked slots untouched**) and topped up on every public slots read
+(self-healing window — availability can never silently expire). Logic in `therapist.service.js`
+(`buildSlotDatetimes`, `ensureSlotWindow`, `updateMyAvailability`).
 
 ### Session
 `{ id, patientId, therapistId, slotId(unique), status(SessionStatus=PENDING_PAYMENT), sessionNumber,
@@ -98,6 +106,7 @@ status(PaymentStatus=PENDING), reviewedBy?, createdAt, approvedAt? }`
    reviewedBy`; **data-fix** `UPDATE therapists SET status='APPROVED' WHERE isActive=true` (grandfather
    seeded/live therapists).
 4. `20260707100000_google_oauth_users` — `passwordHash` → nullable; add unique `googleId`.
+5. `20260710120000_therapist_availability` — add `therapist_availability` (weekly recurring hours).
 
 **Workflow (non-interactive shell):** write `migrations/<timestamp>_<name>/migration.sql` by hand →
 `npx prisma migrate deploy` → `npx prisma generate`. **Never edit an applied migration.** On Windows,

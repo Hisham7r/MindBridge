@@ -1,6 +1,6 @@
 # 09 — Current State (done / cosmetic / pending)
 
-> **Last updated:** 2026-07-08 · branch `master`
+> **Last updated:** 2026-07-11 · branch `master`
 > **This is the fast-changing file.** It goes stale faster than the rest. Always cross-check against
 > `git log --oneline` and the actual code. When status here disagrees with the code, the code wins.
 
@@ -31,51 +31,44 @@ imported nowhere in the app.**
 | Admin: therapist roster + suspend/reactivate | ✅ Real, e2e-verified | real distinct-patient stats; View→profile modal |
 | Admin: patient search + detail | ✅ Real, e2e-verified | name/email search; View→sessions+payments (read-only) |
 | Admin: therapist applications review | ✅ Real | Security tab |
+| **Therapist availability management** | ✅ Real, e2e-verified | weekly rules → generated slots, self-healing window (ADR-021) |
 | Transactional email (Resend) | ✅ Wired, best-effort | test-domain delivery limit (ADR-010) |
+
+**Admin payment queues** are pending-only: Overview shows only PENDING deposits and "View All
+Transactions →" navigates to Finance; Finance has the pending queue + a collapsible processed history.
+The cosmetic "Operation Hours" card and the Operations tab were **removed** (ADR-022).
 
 ## What is intentionally cosmetic / not backed (do NOT fake — see owner rules in `00`)
 
-- **Therapist availability management** — Settings "Availability Hours" card is **disabled ("Coming
-  soon")**. Therapists cannot publish their own bookable slots; slots exist **only via the seed
-  script**. This is the **single biggest remaining functional gap.**
 - **Patient actions** — the admin patient detail is **read-only**; no ban/suspend (would need a new
   `User` flag + endpoint — ADR-017).
-- **Payment screenshots** — stored as a **filename string**; no real blob storage.
-- **Assorted inert UI** — admin Operation Hours & Support tabs; patient streak/mood; therapist
-  Resources. Left visibly inert on purpose.
+- **Payment screenshots** — stored as a **filename string**; no real blob storage. The "View
+  Screenshot/Proof" buttons in the admin payment queues don't open anything yet.
+- **Assorted inert UI** — admin Support tab; patient streak/mood; therapist Resources. Left visibly
+  inert on purpose.
 
 ## Pending backlog (roughly prioritized)
 
-1. **Therapist availability management** — let approved therapists publish real bookable slots
-   (replace the cosmetic card + seed-only slots). Needs schema/endpoints/UI. Biggest gap.
-2. **Patient moderation** — optional ban/suspend patient (new `User` flag + endpoint) if needed.
-3. **Production hardening:**
+1. **Production hardening** (the app is functionally complete for its core loops):
    - Verify a real Resend domain (`mindbridge.pk`) so approval/rejection emails reach *any* address.
    - Publish the Google OAuth consent screen (out of "Testing" so non-test-users can sign in).
-   - Real blob storage for payment screenshots.
+   - Real blob storage + viewer for payment screenshots.
    - Tighten CORS (currently wide open `cors()`); consider JWT refresh/rotation.
+   - Hosting setup (env vars per environment, `FRONTEND_URL`, DB).
+2. **Patient moderation** — optional ban/suspend patient (new `User` flag + endpoint) if needed.
+3. **Seeded-therapist hours** — only Ayesha has weekly rules set (Mon–Fri 9–5, from testing). The other
+   seeded therapists (+ Lisa/Hisham) are unbookable until hours are set — correct behavior; set via
+   each therapist's Settings if demo bookability is wanted.
 4. **Docs upkeep** — keep `09-STATE.md` + ADRs current as features land.
 
 ## ⚠️ Uncommitted / in-flight work (as of this writing)
 
-At the time of writing this doc, the following was **built and verified but not yet committed** — the
-next agent should reconcile with `git status` (it may already be committed by the time you read this):
-
-- **Admin dashboard "make it real" work:**
-  - Backend: `admin.service.js` (`listTherapists`, `setTherapistActive`, `getUserDetail`),
-    `admin.controller.js` (+ handlers), `admin.routes.js` (`GET /admin/therapists`,
-    `GET /admin/users/:id`, `PATCH /admin/therapists/:id/suspend|reactivate`),
-    `therapist.service.js` (the ADR-011 suspension-preserving loophole fix).
-  - Frontend: `services/api.js` (`getAdminTherapists`, `getAdminUser`, `suspendTherapist`,
-    `reactivateTherapist`), `pages/AdminConsole.jsx` (both tables real, therapist detail modal with
-    suspend/reactivate, patient table + search + detail modal, mock import removed),
-    `config/sidebarConfig.jsx` ("Intelligence" → "Overview").
-- **This documentation set** (the `docs/` archive move + `00`–`09` + CLAUDE.md index rewrite).
-
-Suggested commits (owner's convention: small, conventional, **no Co-Authored-By**):
-1. `feat(backend): admin therapist roster, suspend/reactivate, and patient detail endpoints`
-2. `feat(frontend): real admin therapist & patient management + rename Intelligence to Overview`
-3. `docs: restructure into layered AI handover set (docs/00–09) + archive legacy guides`
+Built and verified but possibly not yet committed — reconcile with `git status`:
+- `docs/LEARNING-GUIDE.md` (+ links from `CLAUDE.md` / `00-ONBOARDING.md`).
+- Therapist availability feature: migration `20260710120000_therapist_availability`, schema,
+  `therapist.validator/service/controller/routes`, `api.js`, `TherapistDashboard.jsx` Settings editor.
+- Admin queue rework + Operation Hours/Operations removal: `AdminConsole.jsx`, `sidebarConfig.jsx`.
+- Doc updates: `02`, `04`, `06`, `07` (ADR-021/022), this file.
 
 ## Test data notes
 
