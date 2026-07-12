@@ -30,12 +30,6 @@ export const ADMIN_NAV = [
     purpose: 'Financial oversight and transaction verification'
   },
   {
-    label: 'Operations',
-    icon: '⚙',
-    section: 'operations',
-    purpose: 'Platform settings and global configuration'
-  },
-  {
     label: 'Security',
     icon: '🔒',
     section: 'security',

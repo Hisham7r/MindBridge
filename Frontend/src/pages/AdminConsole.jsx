@@ -49,9 +49,8 @@ export default function AdminConsole() {
   const [loadingPatient, setLoadingPatient] = useState(false);
   const [patientError, setPatientError] = useState('');
 
-  const [startTime, setStartTime] = useState('08:00');
-  const [endTime, setEndTime] = useState('22:00');
-  const [hoursSaved, setHoursSaved] = useState(false);
+  // Finance: pending requests always show; handled history is behind "View All".
+  const [showHandledPayments, setShowHandledPayments] = useState(false);
 
   const navItems = getNavByRole(role);
 
@@ -162,6 +161,7 @@ export default function AdminConsole() {
   }
 
   const pending = payments.filter(p => p.status === 'pending');
+  const handledPayments = payments.filter(p => p.status !== 'pending');
   const pendingApps = applications.filter(a => a.status === 'PENDING');
   const trackLabel = (t) => (t === 'CAREER' ? 'Career' : 'Mental Health');
 
@@ -312,112 +312,59 @@ export default function AdminConsole() {
           ))}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          {/* Payment Verification */}
-          <div className="lg:col-span-2 card">
-            <div className="flex items-center justify-between mb-1">
-              <div>
-                <h2 className="font-bold text-gray-800">Payment Verification</h2>
-                <p className="text-xs text-gray-400">Review manual bank transfers and deposits.</p>
-              </div>
-              {pending.length > 0 && (
-                <span className="badge bg-brand text-white">{pending.length} Pending</span>
-              )}
+        {/* Payment Verification — pending queue only; history lives in Finance */}
+        <div className="card mb-8">
+          <div className="flex items-center justify-between mb-1">
+            <div>
+              <h2 className="font-bold text-gray-800">Payment Verification</h2>
+              <p className="text-xs text-gray-400">Review manual bank transfers and deposits.</p>
             </div>
-
-            {payError && <p className="text-xs text-red-500 mt-2">{payError}</p>}
-
-            <div className="mt-4">
-              <div className="grid grid-cols-3 text-xs font-semibold text-gray-400 uppercase tracking-wide px-2 pb-2 border-b border-gray-50">
-                <span>User</span>
-                <span className="text-center">Amount</span>
-                <span className="text-right">Proof</span>
-              </div>
-              <div className="divide-y divide-gray-50 mt-2">
-                {loading ? (
-                  <p className="text-sm text-gray-400 py-3 px-2">Loading…</p>
-                ) : payments.length === 0 ? (
-                  <p className="text-sm text-gray-400 py-3 px-2">No payments yet.</p>
-                ) : payments.map(pay => (
-                  <div key={pay.id} className={`grid grid-cols-3 items-center py-3 px-2 rounded-xl transition-colors ${pay.status === 'approved' ? 'bg-green-50' : pay.status === 'rejected' ? 'bg-red-50' : 'hover:bg-gray-50'}`}>
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 text-xs font-bold shrink-0">
-                        {pay.user.split(' ').map(w => w[0]).join('')}
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-gray-800">{pay.user}</p>
-                        <p className="text-xs text-gray-400">{pay.email}</p>
-                      </div>
-                    </div>
-                    <p className="text-sm font-semibold text-gray-800 text-center">{pay.amount}</p>
-                    <div className="flex items-center justify-end gap-2">
-                      {pay.status === 'pending' ? (
-                        <>
-                          <button className="text-brand text-xs font-semibold flex items-center gap-1 hover:underline">
-                            🖼 View Screenshot
-                          </button>
-                          <button onClick={() => approvePayment(pay.id)} disabled={busyPayId === pay.id} className="text-green-600 hover:text-green-700 text-xl transition-colors disabled:opacity-40">✓</button>
-                          <button onClick={() => rejectPayment(pay.id)} disabled={busyPayId === pay.id} className="text-red-400 hover:text-red-600 text-xl transition-colors disabled:opacity-40">✗</button>
-                        </>
-                      ) : (
-                        <span className={`badge ${pay.status === 'approved' ? 'badge-green' : 'badge-red'} capitalize`}>{pay.status}</span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <button className="w-full text-center text-brand text-sm font-semibold mt-3 hover:underline">View All Transactions</button>
-            </div>
+            {pending.length > 0 && (
+              <span className="badge bg-brand text-white">{pending.length} Pending</span>
+            )}
           </div>
 
-          {/* Operation Hours */}
-          <div className="card">
-            <h2 className="font-bold text-gray-800">Operation Hours</h2>
-            <p className="text-xs text-gray-400 mt-1">Set the global timeframe for active therapy sessions.</p>
+          {payError && <p className="text-xs text-red-500 mt-2">{payError}</p>}
 
-            <div className="mt-5 space-y-4">
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-sm font-medium text-gray-700">Start Time</label>
-                  <span className="text-xs text-gray-400" style={{fontFamily:'serif'}}>شروع وقت</span>
-                </div>
-                <input
-                  type="time"
-                  value={startTime}
-                  onChange={e => { setStartTime(e.target.value); setHoursSaved(false); }}
-                  className="input-field"
-                />
-              </div>
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-sm font-medium text-gray-700">End Time</label>
-                  <span className="text-xs text-gray-400" style={{fontFamily:'serif'}}>اختتامی وقت</span>
-                </div>
-                <input
-                  type="time"
-                  value={endTime}
-                  onChange={e => { setEndTime(e.target.value); setHoursSaved(false); }}
-                  className="input-field"
-                />
-              </div>
-              <div className="bg-blue-50 rounded-xl p-3 border border-blue-100">
-                <div className="flex items-start gap-2">
-                  <span className="text-blue-500 text-sm shrink-0 mt-0.5">ℹ</span>
-                  <p className="text-xs text-blue-700 leading-relaxed">
-                    Changes will apply to all therapists globally. Users already in sessions will not be disconnected.
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setHoursSaved(true)}
-                className="btn-primary w-full py-3.5"
-              >
-                Update Global Hours
-              </button>
-              {hoursSaved && (
-                <p className="text-center text-xs text-green-600">✅ Hours updated successfully!</p>
-              )}
+          <div className="mt-4">
+            <div className="grid grid-cols-3 text-xs font-semibold text-gray-400 uppercase tracking-wide px-2 pb-2 border-b border-gray-50">
+              <span>User</span>
+              <span className="text-center">Amount</span>
+              <span className="text-right">Proof</span>
             </div>
+            <div className="divide-y divide-gray-50 mt-2">
+              {loading ? (
+                <p className="text-sm text-gray-400 py-3 px-2">Loading…</p>
+              ) : pending.length === 0 ? (
+                <p className="text-sm text-gray-400 py-4 px-2 text-center">✓ No pending deposits — all caught up.</p>
+              ) : pending.map(pay => (
+                <div key={pay.id} className="grid grid-cols-3 items-center py-3 px-2 rounded-xl transition-colors hover:bg-gray-50">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 text-xs font-bold shrink-0">
+                      {pay.user.split(' ').map(w => w[0]).join('')}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800">{pay.user}</p>
+                      <p className="text-xs text-gray-400">{pay.email}</p>
+                    </div>
+                  </div>
+                  <p className="text-sm font-semibold text-gray-800 text-center">{pay.amount}</p>
+                  <div className="flex items-center justify-end gap-2">
+                    <button className="text-brand text-xs font-semibold flex items-center gap-1 hover:underline">
+                      🖼 View Screenshot
+                    </button>
+                    <button onClick={() => approvePayment(pay.id)} disabled={busyPayId === pay.id} className="text-green-600 hover:text-green-700 text-xl transition-colors disabled:opacity-40">✓</button>
+                    <button onClick={() => rejectPayment(pay.id)} disabled={busyPayId === pay.id} className="text-red-400 hover:text-red-600 text-xl transition-colors disabled:opacity-40">✗</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={() => { setActiveSection('finance'); setActiveSubSection(null); }}
+              className="w-full text-center text-brand text-sm font-semibold mt-3 hover:underline"
+            >
+              View All Transactions →
+            </button>
           </div>
         </div>
 
@@ -584,17 +531,19 @@ export default function AdminConsole() {
 
               <div className="mt-4">
                 <div className="grid grid-cols-3 text-xs font-semibold text-gray-400 uppercase tracking-wide px-2 pb-2 border-b border-gray-50">
-                  <span>Therapist</span>
+                  <span>User</span>
                   <span className="text-center">Amount</span>
                   <span className="text-right">Bank Proof</span>
                 </div>
+
+                {/* Pending queue — always visible */}
                 <div className="divide-y divide-gray-50 mt-2">
                   {loading ? (
                     <p className="text-sm text-gray-400 py-3 px-2">Loading…</p>
-                  ) : payments.length === 0 ? (
-                    <p className="text-sm text-gray-400 py-3 px-2">No payments yet.</p>
-                  ) : payments.map(pay => (
-                    <div key={pay.id} className={`grid grid-cols-3 items-center py-3 px-2 rounded-xl transition-colors ${pay.status === 'approved' ? 'bg-green-50' : pay.status === 'rejected' ? 'bg-red-50' : 'hover:bg-gray-50'}`}>
+                  ) : pending.length === 0 ? (
+                    <p className="text-sm text-gray-400 py-4 px-2 text-center">✓ No pending deposits — all caught up.</p>
+                  ) : pending.map(pay => (
+                    <div key={pay.id} className="grid grid-cols-3 items-center py-3 px-2 rounded-xl transition-colors hover:bg-gray-50">
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 text-xs font-bold shrink-0">
                           {pay.user.split(' ').map(w => w[0]).join('')}
@@ -606,82 +555,48 @@ export default function AdminConsole() {
                       </div>
                       <p className="text-sm font-semibold text-gray-800 text-center">{pay.amount}</p>
                       <div className="flex items-center justify-end gap-2">
-                        {pay.status === 'pending' ? (
-                          <>
-                            <button className="text-brand text-xs font-semibold flex items-center gap-1 hover:underline">
-                              🖼 View Proof
-                            </button>
-                            <button onClick={() => approvePayment(pay.id)} disabled={busyPayId === pay.id} className="text-green-600 hover:text-green-700 text-xl transition-colors disabled:opacity-40" title="Approve">✓</button>
-                            <button onClick={() => rejectPayment(pay.id)} disabled={busyPayId === pay.id} className="text-red-400 hover:text-red-600 text-xl transition-colors disabled:opacity-40" title="Reject">✗</button>
-                          </>
-                        ) : (
-                          <span className={`badge ${pay.status === 'approved' ? 'badge-green' : 'badge-red'} capitalize`}>{pay.status}</span>
-                        )}
+                        <button className="text-brand text-xs font-semibold flex items-center gap-1 hover:underline">
+                          🖼 View Proof
+                        </button>
+                        <button onClick={() => approvePayment(pay.id)} disabled={busyPayId === pay.id} className="text-green-600 hover:text-green-700 text-xl transition-colors disabled:opacity-40" title="Approve">✓</button>
+                        <button onClick={() => rejectPayment(pay.id)} disabled={busyPayId === pay.id} className="text-red-400 hover:text-red-600 text-xl transition-colors disabled:opacity-40" title="Reject">✗</button>
                       </div>
                     </div>
                   ))}
                 </div>
-              </div>
-            </div>
-          </div>
-        )}
 
-        {/* Operations Section */}
-        {activeSection === 'operations' && (
-          <div className="space-y-6">
-            <div className="card">
-              <h2 className="font-bold text-gray-800 mb-4">Global Configuration</h2>
-
-              <div className="space-y-6">
-                {/* Operation Hours */}
-                <div>
-                  <h3 className="text-sm font-bold text-gray-800 mb-3">Operation Hours</h3>
-                  <p className="text-xs text-gray-400 mb-4">Set the global timeframe for active therapy sessions.</p>
-
-                  <div className="space-y-4">
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="text-sm font-medium text-gray-700">Start Time</label>
-                        <span className="text-xs text-gray-400" style={{fontFamily:'serif'}}>شروع وقت</span>
-                      </div>
-                      <input
-                        type="time"
-                        value={startTime}
-                        onChange={e => { setStartTime(e.target.value); setHoursSaved(false); }}
-                        className="input-field"
-                      />
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="text-sm font-medium text-gray-700">End Time</label>
-                        <span className="text-xs text-gray-400" style={{fontFamily:'serif'}}>اختتامی وقت</span>
-                      </div>
-                      <input
-                        type="time"
-                        value={endTime}
-                        onChange={e => { setEndTime(e.target.value); setHoursSaved(false); }}
-                        className="input-field"
-                      />
-                    </div>
-                    <div className="bg-blue-50 rounded-xl p-3 border border-blue-100">
-                      <div className="flex items-start gap-2">
-                        <span className="text-blue-500 text-sm shrink-0 mt-0.5">ℹ</span>
-                        <p className="text-xs text-blue-700 leading-relaxed">
-                          Changes will apply to all therapists globally. Users already in sessions will not be disconnected.
-                        </p>
-                      </div>
-                    </div>
+                {/* Handled history — collapsed behind View All */}
+                {handledPayments.length > 0 && (
+                  <div className="mt-3 border-t border-gray-50 pt-3">
                     <button
-                      onClick={() => setHoursSaved(true)}
-                      className="btn-primary w-full py-3.5"
+                      onClick={() => setShowHandledPayments(v => !v)}
+                      className="w-full text-center text-brand text-sm font-semibold hover:underline"
                     >
-                      Update Global Hours
+                      {showHandledPayments ? 'Hide processed transactions' : `View All (${handledPayments.length} processed)`}
                     </button>
-                    {hoursSaved && (
-                      <p className="text-center text-xs text-green-600">✅ Hours updated successfully!</p>
+                    {showHandledPayments && (
+                      <div className="divide-y divide-gray-50 mt-2">
+                        {handledPayments.map(pay => (
+                          <div key={pay.id} className={`grid grid-cols-3 items-center py-3 px-2 rounded-xl ${pay.status === 'approved' ? 'bg-green-50' : 'bg-red-50'}`}>
+                            <div className="flex items-center gap-3">
+                              <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 text-xs font-bold shrink-0">
+                                {pay.user.split(' ').map(w => w[0]).join('')}
+                              </div>
+                              <div>
+                                <p className="text-sm font-semibold text-gray-800">{pay.user}</p>
+                                <p className="text-xs text-gray-400">{pay.email}</p>
+                              </div>
+                            </div>
+                            <p className="text-sm font-semibold text-gray-800 text-center">{pay.amount}</p>
+                            <div className="flex items-center justify-end">
+                              <span className={`badge ${pay.status === 'approved' ? 'badge-green' : 'badge-red'} capitalize`}>{pay.status}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
-                </div>
+                )}
               </div>
             </div>
           </div>
