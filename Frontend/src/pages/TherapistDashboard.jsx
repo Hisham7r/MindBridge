@@ -34,6 +34,30 @@ function weekStart(d) {
   return x;
 }
 
+// Settings → Availability: render order Monday-first; values are JS getDay()
+// numbers (0 = Sunday … 6 = Saturday) to match the backend rules.
+const WEEK_DAYS = [
+  { day: 1, label: 'Monday' },
+  { day: 2, label: 'Tuesday' },
+  { day: 3, label: 'Wednesday' },
+  { day: 4, label: 'Thursday' },
+  { day: 5, label: 'Friday' },
+  { day: 6, label: 'Saturday' },
+  { day: 0, label: 'Sunday' },
+];
+
+// Map the API's rules array into the local all-7-days form shape.
+function rulesToForm(rules) {
+  const form = {};
+  WEEK_DAYS.forEach(({ day }) => {
+    const rule = rules.find(r => r.dayOfWeek === day);
+    form[day] = rule
+      ? { enabled: true, start: rule.startTime, end: rule.endTime }
+      : { enabled: false, start: '09:00', end: '18:00' };
+  });
+  return form;
+}
+
 // Map an API therapist profile into the Settings form's string fields.
 // Array fields (specializations/languages) are shown as comma-separated text.
 function profileToForm(p) {
@@ -67,6 +91,12 @@ export default function TherapistDashboard() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');      // 'active' | 'incomplete' | error text | ''
 
+  // ── Weekly availability (Settings tab) ──
+  // Local shape: { [dayOfWeek]: { enabled, start, end } } for all 7 days.
+  const [avail, setAvail] = useState(null);        // null while loading
+  const [savingAvail, setSavingAvail] = useState(false);
+  const [availMsg, setAvailMsg] = useState('');    // 'saved' | error text | ''
+
   const today = new Date();
   const dayName = today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
@@ -97,6 +127,46 @@ export default function TherapistDashboard() {
       .catch(() => { /* not a therapist / fetch failed — Settings stays empty */ });
     return () => { active = false; };
   }, []);
+
+  // Load the weekly availability rules for the Settings tab.
+  useEffect(() => {
+    let active = true;
+    api.getMyAvailability()
+      .then((rules) => { if (active) setAvail(rulesToForm(rules)); })
+      .catch(() => { if (active) setAvail(rulesToForm([])); });
+    return () => { active = false; };
+  }, []);
+
+  const setDay = (day, patch) =>
+    setAvail((a) => ({ ...a, [day]: { ...a[day], ...patch } }));
+
+  async function handleSaveAvailability() {
+    if (!avail) return;
+    // Client-side sanity check so the therapist gets an instant, friendly error.
+    for (const { day, label } of WEEK_DAYS) {
+      const d = avail[day];
+      if (d.enabled && d.start >= d.end) {
+        setAvailMsg(`${label}: end time must be after start time.`);
+        return;
+      }
+    }
+    setSavingAvail(true);
+    setAvailMsg('');
+    try {
+      const rules = WEEK_DAYS
+        .filter(({ day }) => avail[day].enabled)
+        .map(({ day }) => ({ dayOfWeek: day, startTime: avail[day].start, endTime: avail[day].end }));
+      const saved = await api.updateMyAvailability(rules);
+      setAvail(rulesToForm(saved));
+      setAvailMsg('saved');
+      setTimeout(() => setAvailMsg(''), 5000);
+    } catch (err) {
+      const detail = err.details?.[0]?.message;
+      setAvailMsg(detail || err.message || 'Could not save availability.');
+    } finally {
+      setSavingAvail(false);
+    }
+  }
 
   const setField = (key, value) => setPform((f) => ({ ...f, [key]: value }));
 
@@ -698,22 +768,57 @@ export default function TherapistDashboard() {
             </div>
 
             <div className="card mb-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-gray-800">Availability Hours</h3>
-                <span className="text-xs text-gray-400 italic">Coming soon</span>
-              </div>
-              <div className="space-y-3">
-                {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map((day, i) => (
-                  <div key={i} className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-700">{day}</span>
-                    <div className="flex items-center gap-2">
-                      <input type="time" defaultValue="09:00" disabled className="input-field w-24 text-sm py-2 opacity-60" />
-                      <span className="text-gray-400">—</span>
-                      <input type="time" defaultValue="18:00" disabled className="input-field w-24 text-sm py-2 opacity-60" />
+              <h3 className="font-bold text-gray-800 mb-1">Availability Hours</h3>
+              <p className="text-xs text-gray-400 mb-4">
+                Set your weekly working hours. Patients can book 1-hour sessions inside them — your bookable calendar refreshes automatically.
+              </p>
+              {!avail ? (
+                <p className="text-sm text-gray-400">Loading your availability…</p>
+              ) : (
+                <div className="space-y-3">
+                  {WEEK_DAYS.map(({ day, label }) => (
+                    <div key={day} className="flex items-center justify-between">
+                      <label className="flex items-center gap-2.5 text-sm font-medium text-gray-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={avail[day].enabled}
+                          onChange={(e) => setDay(day, { enabled: e.target.checked })}
+                          className="w-4 h-4 accent-brand"
+                        />
+                        {label}
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="time"
+                          value={avail[day].start}
+                          disabled={!avail[day].enabled}
+                          onChange={(e) => setDay(day, { start: e.target.value })}
+                          className={`input-field w-24 text-sm py-2 ${!avail[day].enabled ? 'opacity-50' : ''}`}
+                        />
+                        <span className="text-gray-400">—</span>
+                        <input
+                          type="time"
+                          value={avail[day].end}
+                          disabled={!avail[day].enabled}
+                          onChange={(e) => setDay(day, { end: e.target.value })}
+                          className={`input-field w-24 text-sm py-2 ${!avail[day].enabled ? 'opacity-50' : ''}`}
+                        />
+                      </div>
                     </div>
+                  ))}
+                  <div className="flex items-center gap-3 pt-2">
+                    <button
+                      onClick={handleSaveAvailability}
+                      disabled={savingAvail}
+                      className="btn-primary text-sm py-2 px-6 disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {savingAvail ? 'Saving…' : 'Save Availability'}
+                    </button>
+                    {availMsg === 'saved' && <span className="text-sm text-green-600">Saved — your bookable calendar is updated ✓</span>}
+                    {availMsg && availMsg !== 'saved' && <span className="text-sm text-red-600">{availMsg}</span>}
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
             </div>
           </div>
         )}

@@ -101,6 +101,14 @@ export const api = {
     const data = await request('/therapists/me', { method: 'PATCH', body: payload });
     return data.therapist;
   },
+  getMyAvailability: async () => {
+    const data = await request('/therapists/me/availability');
+    return data.rules || [];
+  },
+  updateMyAvailability: async (rules) => {
+    const data = await request('/therapists/me/availability', { method: 'PUT', body: { rules } });
+    return data.rules || [];
+  },
 
   // ── Sessions ──
   createSession: (payload) => request('/sessions', { method: 'POST', body: payload }),
