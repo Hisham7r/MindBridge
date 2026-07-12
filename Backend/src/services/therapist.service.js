@@ -83,7 +83,134 @@ export async function getTherapistById(id) {
   return formatTherapist(therapist);
 }
 
+// ── Availability (recurring weekly hours → generated slots) ─────────────────
+
+// How far ahead concrete bookable slots are generated from the weekly rules.
+const AVAILABILITY_WINDOW_DAYS = 14;
+const SLOT_DURATION_MINS = 60; // sessions are 1 hour (Session.durationMins default)
+
+// Build every slot start-Date implied by the weekly rules over the rolling
+// window, skipping times already in the past.
+function buildSlotDatetimes(rules, now = new Date()) {
+  const byDay = new Map(rules.map(r => [r.dayOfWeek, r]));
+  const datetimes = [];
+
+  for (let d = 0; d < AVAILABILITY_WINDOW_DAYS; d++) {
+    const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + d);
+    const rule = byDay.get(day.getDay());
+    if (!rule) continue;
+
+    const [sh, sm] = rule.startTime.split(':').map(Number);
+    const [eh, em] = rule.endTime.split(':').map(Number);
+    const dayEnd = new Date(day); dayEnd.setHours(eh, em, 0, 0);
+
+    const t = new Date(day); t.setHours(sh, sm, 0, 0);
+    while (t.getTime() + SLOT_DURATION_MINS * 60000 <= dayEnd.getTime()) {
+      if (t > now) datetimes.push(new Date(t));
+      t.setMinutes(t.getMinutes() + SLOT_DURATION_MINS);
+    }
+  }
+
+  return datetimes;
+}
+
+// Idempotent top-up: create any slot the rules imply that doesn't already
+// exist (booked or free) in the window. Never deletes anything — safe to run
+// on every read, which is what keeps a therapist's calendar from ever going
+// stale (the old seed-only slots expired silently).
+async function ensureSlotWindow(db, therapistId) {
+  const rules = await db.therapistAvailability.findMany({ where: { therapistId } });
+  if (rules.length === 0) return;
+
+  const now = new Date();
+  const wanted = buildSlotDatetimes(rules, now);
+  if (wanted.length === 0) return;
+
+  const existing = await db.availabilitySlot.findMany({
+    where: { therapistId, slotDatetime: { gte: now } },
+    select: { slotDatetime: true },
+  });
+  const taken = new Set(existing.map(s => s.slotDatetime.getTime()));
+
+  const missing = wanted.filter(dt => !taken.has(dt.getTime()));
+  if (missing.length) {
+    await db.availabilitySlot.createMany({
+      data: missing.map(slotDatetime => ({ therapistId, slotDatetime })),
+    });
+  }
+}
+
+// GET /therapists/me/availability — the therapist's weekly rules for Settings.
+export async function getMyAvailability(userId) {
+  const therapist = await prisma.therapist.findUnique({ where: { userId } });
+  if (!therapist) {
+    const error = new Error('Therapist profile not found.');
+    error.status = 404;
+    throw error;
+  }
+
+  const rules = await prisma.therapistAvailability.findMany({
+    where: { therapistId: therapist.id },
+    orderBy: { dayOfWeek: 'asc' },
+    select: { dayOfWeek: true, startTime: true, endTime: true },
+  });
+
+  return rules;
+}
+
+// PUT /therapists/me/availability — replace the weekly schedule wholesale,
+// then rebuild the therapist's future calendar from it:
+//   · rules rows are swapped (delete + recreate)
+//   · future UNBOOKED slots are deleted (booked ones are untouched — changing
+//     your hours can never destroy an existing appointment)
+//   · fresh slots are generated for the window, skipping any datetime still
+//     occupied by a surviving booked slot
+export async function updateMyAvailability(userId, rules) {
+  const therapist = await prisma.therapist.findUnique({ where: { userId } });
+  if (!therapist) {
+    const error = new Error('Therapist profile not found.');
+    error.status = 404;
+    throw error;
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const now = new Date();
+
+    await tx.therapistAvailability.deleteMany({ where: { therapistId: therapist.id } });
+    if (rules.length) {
+      await tx.therapistAvailability.createMany({
+        data: rules.map(r => ({ therapistId: therapist.id, ...r })),
+      });
+    }
+
+    await tx.availabilitySlot.deleteMany({
+      where: { therapistId: therapist.id, isBooked: false, slotDatetime: { gte: now } },
+    });
+
+    if (rules.length) {
+      const wanted = buildSlotDatetimes(rules, now);
+      const booked = await tx.availabilitySlot.findMany({
+        where: { therapistId: therapist.id, slotDatetime: { gte: now } },
+        select: { slotDatetime: true },
+      });
+      const taken = new Set(booked.map(s => s.slotDatetime.getTime()));
+      const fresh = wanted.filter(dt => !taken.has(dt.getTime()));
+      if (fresh.length) {
+        await tx.availabilitySlot.createMany({
+          data: fresh.map(slotDatetime => ({ therapistId: therapist.id, slotDatetime })),
+        });
+      }
+    }
+  });
+
+  return getMyAvailability(userId);
+}
+
 export async function getTherapistSlots(therapistId, date) {
+  // Self-healing calendar: top up the rolling window from the weekly rules
+  // before answering, so availability never silently expires.
+  await ensureSlotWindow(prisma, therapistId);
+
   const now = new Date();
 
   const where = {

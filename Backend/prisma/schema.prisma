@@ -66,9 +66,26 @@ model Therapist {
   specializations TherapistSpecialization[]
   languages       TherapistLanguage[]
   availableSlots  AvailabilitySlot[]
+  availability    TherapistAvailability[]
   sessions        Session[] @relation("TherapistSessions")
 
   @@map("therapists")
+}
+
+// A therapist's recurring weekly working hours — one row per enabled weekday.
+// Concrete bookable AvailabilitySlot rows are generated from these rules on a
+// rolling window (see availability logic in therapist.service). Times are
+// "HH:MM" 24h strings in server-local time (all times in this app are PKT).
+model TherapistAvailability {
+  id          String    @id @default(uuid())
+  therapistId String
+  therapist   Therapist @relation(fields: [therapistId], references: [id])
+  dayOfWeek   Int       // 0 = Sunday … 6 = Saturday (matches JS Date.getDay())
+  startTime   String    // e.g. "09:00"
+  endTime     String    // e.g. "18:00"
+
+  @@unique([therapistId, dayOfWeek])
+  @@map("therapist_availability")
 }
 
 enum TherapistStatus {

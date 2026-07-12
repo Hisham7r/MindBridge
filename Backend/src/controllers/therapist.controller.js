@@ -1,5 +1,34 @@
 import * as therapistService from '../services/therapist.service.js';
-import { updateTherapistSchema } from '../validators/therapist.validator.js';
+import { updateTherapistSchema, availabilitySchema } from '../validators/therapist.validator.js';
+
+export async function getMyAvailability(req, res, next) {
+  try {
+    const rules = await therapistService.getMyAvailability(req.user.id);
+    res.json({ rules });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function updateMyAvailability(req, res, next) {
+  try {
+    const parsed = availabilitySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: 'Validation failed',
+        details: parsed.error.issues.map(e => ({
+          field: e.path.join('.'),
+          message: e.message,
+        })),
+      });
+    }
+
+    const rules = await therapistService.updateMyAvailability(req.user.id, parsed.data.rules);
+    res.json({ message: 'Availability updated — your bookable calendar has been refreshed.', rules });
+  } catch (err) {
+    next(err);
+  }
+}
 
 export async function getMyProfile(req, res, next) {
   try {
