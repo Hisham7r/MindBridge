@@ -196,16 +196,17 @@ export default function AdminConsole() {
   }
 
   // ── Real stat-card values ─────────────────────────────────────────────────
+  // New signups = PATIENT accounts created in the last 7 days (therapists have
+  // their own pipeline: the Security applications queue + People → Therapists).
   const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
-  const newThisWeek = users.filter(u => u.createdAt && new Date(u.createdAt) >= weekAgo).length;
+  const newThisWeek = users.filter(u => u.role === 'PATIENT' && u.createdAt && new Date(u.createdAt) >= weekAgo).length;
   const patients = stats?.users?.patients ?? 0;
   const revenuePkr = stats?.revenuePkr ?? 0;
 
   const statCards = [
-    { label: 'ACTIVE PATIENTS', value: loading ? '…' : String(patients), change: 'Registered patients', icon: '👥', positive: true },
-    { label: 'NEW SIGNUPS', value: loading ? '…' : String(newThisWeek), change: 'New this week', icon: '📈', positive: true },
-    { label: 'RETENTION RATE', value: '—', change: 'Not tracked yet', icon: '📊', positive: null },
-    { label: 'REVENUE', value: loading ? '…' : `PKR ${revenuePkr.toLocaleString()}`, change: 'From approved payments', icon: '💰', positive: true },
+    { label: 'TOTAL PATIENTS', value: loading ? '…' : String(patients), change: 'Registered patients', icon: '👥', positive: true },
+    { label: 'NEW SIGNUPS', value: loading ? '…' : String(newThisWeek), change: 'Patients this week', icon: '📈', positive: true },
+    { label: 'TOTAL DEPOSITS', value: loading ? '…' : `PKR ${revenuePkr.toLocaleString()}`, change: 'From approved payments', icon: '💰', positive: true },
   ];
 
   return (
@@ -297,7 +298,7 @@ export default function AdminConsole() {
         {activeSection === 'overview' && (
           <>
         {/* Stats */}
-        <div className="grid grid-cols-4 gap-5 mb-8">
+        <div className="grid grid-cols-3 gap-5 mb-8">
           {statCards.map((s) => (
             <div key={s.label} className="card">
               <div className="flex items-center justify-between">
