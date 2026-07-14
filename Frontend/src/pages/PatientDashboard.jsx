@@ -107,10 +107,10 @@ export default function PatientDashboard() {
     email: currentUser.email,
     phone: currentUser.phone || '',
     language: currentUser.language || 'English',
-    notifications: true,
-    sessionReminders: true,
   });
   const [profileSaved, setProfileSaved] = useState(false);
+  const [profileError, setProfileError] = useState('');
+  const [savingProfile, setSavingProfile] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -199,15 +199,33 @@ export default function PatientDashboard() {
     settings: { title: 'Settings', subtitle: 'Manage your profile and preferences.' },
   };
 
-  const handleProfileSave = () => {
-    setProfileSaved(true);
-    setCurrentUser({
-      ...currentUser,
-      name: profileForm.name,
-      email: profileForm.email,
-      initials: profileForm.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase(),
-    });
-    setTimeout(() => setProfileSaved(false), 3000);
+  // Persist profile changes via PATCH /auth/me (name/phone/language — email is
+  // the login identity and can't be changed).
+  const handleProfileSave = async () => {
+    setProfileError('');
+    setSavingProfile(true);
+    try {
+      const user = await api.updateMe({
+        name: profileForm.name.trim(),
+        language: profileForm.language,
+        // Backend ignores empty strings; only send a phone if one was entered.
+        ...(profileForm.phone.trim() && { phone: profileForm.phone.trim() }),
+      });
+      setCurrentUser({
+        ...currentUser,
+        name: user.name,
+        phone: user.phone,
+        language: user.language,
+        initials: user.initials,
+      });
+      setProfileSaved(true);
+      setTimeout(() => setProfileSaved(false), 3000);
+    } catch (err) {
+      const detail = err.details?.[0]?.message;
+      setProfileError(detail || err.message || 'Could not save changes. Please try again.');
+    } finally {
+      setSavingProfile(false);
+    }
   };
 
   return (
@@ -640,9 +658,10 @@ export default function PatientDashboard() {
                     <input
                       type="email"
                       value={profileForm.email}
-                      onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
-                      className="input-field w-full"
+                      readOnly
+                      className="input-field w-full bg-gray-50 text-gray-500 cursor-not-allowed"
                     />
+                    <p className="text-xs text-gray-400 mt-1">Your email is your login and can't be changed.</p>
                   </div>
                   <div>
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-2">Phone Number</label>
@@ -665,55 +684,14 @@ export default function PatientDashboard() {
                       <option>Punjabi</option>
                     </select>
                   </div>
-                  <button onClick={handleProfileSave} className="btn-primary text-sm py-2 px-6 mt-4">
-                    Save Changes
+                  <button onClick={handleProfileSave} disabled={savingProfile} className="btn-primary text-sm py-2 px-6 mt-4 disabled:opacity-60 disabled:cursor-not-allowed">
+                    {savingProfile ? 'Saving…' : 'Save Changes'}
                   </button>
                   {profileSaved && <p className="text-xs text-green-600 mt-2">✅ Profile updated successfully!</p>}
+                  {profileError && <p className="text-xs text-red-600 mt-2">{profileError}</p>}
                 </div>
               </div>
 
-              <div className="card">
-                <h3 className="font-bold text-gray-800 mb-6">Notification Preferences</h3>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium text-gray-800">Session Reminders</p>
-                      <p className="text-xs text-gray-500 mt-1">Get notified 24 hours before your session.</p>
-                    </div>
-                    <button
-                      onClick={() => setProfileForm({ ...profileForm, sessionReminders: !profileForm.sessionReminders })}
-                      className={`w-11 h-6 rounded-full relative transition-colors ${
-                        profileForm.sessionReminders ? 'bg-brand' : 'bg-gray-200'
-                      }`}
-                    >
-                      <div
-                        className={`absolute w-4 h-4 bg-white rounded-full top-1 transition-all ${
-                          profileForm.sessionReminders ? 'right-1' : 'left-1'
-                        }`}
-                      ></div>
-                    </button>
-                  </div>
-                  <div className="border-b border-gray-100"></div>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium text-gray-800">Platform Notifications</p>
-                      <p className="text-xs text-gray-500 mt-1">Receive updates about MindBridge features.</p>
-                    </div>
-                    <button
-                      onClick={() => setProfileForm({ ...profileForm, notifications: !profileForm.notifications })}
-                      className={`w-11 h-6 rounded-full relative transition-colors ${
-                        profileForm.notifications ? 'bg-brand' : 'bg-gray-200'
-                      }`}
-                    >
-                      <div
-                        className={`absolute w-4 h-4 bg-white rounded-full top-1 transition-all ${
-                          profileForm.notifications ? 'right-1' : 'left-1'
-                        }`}
-                      ></div>
-                    </button>
-                  </div>
-                </div>
-              </div>
             </section>
           )}
         </div>

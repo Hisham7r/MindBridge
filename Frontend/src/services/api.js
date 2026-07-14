@@ -68,6 +68,10 @@ export const api = {
   googleAuth: (credential) =>
     request('/auth/google', { method: 'POST', body: { credential }, auth: false }),
   getMe: () => request('/auth/me'),
+  updateMe: async (payload) => {
+    const data = await request('/auth/me', { method: 'PATCH', body: payload });
+    return data.user;
+  },
   logout: () => request('/auth/logout', { method: 'POST' }),
 
   // ── Therapists (public) ──
