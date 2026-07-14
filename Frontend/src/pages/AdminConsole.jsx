@@ -288,10 +288,6 @@ export default function AdminConsole() {
               {navItems.find(item => item.section === activeSection)?.purpose || 'Platform administration and oversight.'}
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <button className="w-9 h-9 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors text-lg">🔔</button>
-            <div className="w-9 h-9 rounded-full bg-brand flex items-center justify-center text-white font-bold text-sm">{currentUser?.initials || 'AD'}</div>
-          </div>
         </div>
 
         {/* Overview Section */}
