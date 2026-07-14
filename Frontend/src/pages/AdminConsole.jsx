@@ -731,19 +731,7 @@ export default function AdminConsole() {
           </div>
         )}
 
-        <div className="mt-10 pt-6 border-t border-gray-100 flex items-center justify-between">
-          <div className="flex gap-6 text-xs text-gray-400">
-            <a href="#" className="hover:text-brand">Contact Us</a>
-            <a href="#" className="hover:text-brand">Terms of Service</a>
-            <a href="#" className="hover:text-brand">Privacy Policy</a>
-            <a href="#" className="hover:text-brand">Urdu Support</a>
-          </div>
-          <div className="flex gap-2">
-            <span className="text-lg cursor-pointer">🌐</span>
-            <span className="text-lg cursor-pointer">✉</span>
-          </div>
-        </div>
-        <p className="text-center text-xs text-gray-300 mt-2">ADMINISTRATIVE ACCESS ONLY</p>
+        <p className="text-center text-xs text-gray-300 mt-10">ADMINISTRATIVE ACCESS ONLY</p>
 
         {/* Therapist detail modal (opened by the "View" action) */}
         {selectedTherapist && (() => {
