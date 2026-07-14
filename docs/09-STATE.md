@@ -64,7 +64,8 @@ The cosmetic "Operation Hours" card and the Operations tab were **removed** (ADR
 ## ⚠️ Uncommitted / in-flight work (as of this writing)
 
 Built and verified but possibly not yet committed — reconcile with `git status`:
-- `docs/LEARNING-GUIDE.md` (+ links from `CLAUDE.md` / `00-ONBOARDING.md`).
+- `docs/LEARNING-GUIDE.md` is a **personal, local-only textbook** (gitignored on purpose — the owner
+  keeps it off GitHub). If it's missing on a fresh clone, that's expected.
 - Therapist availability feature: migration `20260710120000_therapist_availability`, schema,
   `therapist.validator/service/controller/routes`, `api.js`, `TherapistDashboard.jsx` Settings editor.
 - Admin queue rework + Operation Hours/Operations removal: `AdminConsole.jsx`, `sidebarConfig.jsx`.
