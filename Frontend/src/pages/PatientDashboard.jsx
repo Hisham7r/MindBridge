@@ -4,13 +4,6 @@ import { api } from '../services/api';
 import { useRole } from '../context/RoleContext';
 import SidebarLink from '../components/SidebarLink';
 
-const moodColors = {
-  green: 'badge-green',
-  blue: 'badge-blue',
-  gray: 'badge-gray',
-  red: 'badge-red',
-};
-
 // Backend sessions don't carry an avatar colour, so derive a stable one per
 // therapist id from a fixed palette (keeps avatars colourful + consistent).
 const AVATAR_COLORS = ['#6366F1', '#10B981', '#F59E0B', '#EC4899', '#3B82F6', '#8B5CF6', '#22C55E'];
@@ -163,8 +156,6 @@ export default function PatientDashboard() {
     color: colorForId(s.therapist?.id),
     date: fmtDate(s.slot?.datetime),
     duration: `${s.durationMins || 60} mins`,
-    mood: null,        // no mood-tracking feature in backend yet
-    moodColor: 'gray',
   }));
 
   const paymentsList = sessions
@@ -282,16 +273,6 @@ export default function PatientDashboard() {
             label="Payments"
             active={activeSection === 'payments'}
             onClick={() => setActiveSection('payments')}
-          />
-          <SidebarLink
-            icon={
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.25">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-              </svg>
-            }
-            label="Progress"
-            active={activeSection === 'progress'}
-            onClick={() => setActiveSection('progress')}
           />
           <SidebarLink
             icon={
@@ -550,90 +531,6 @@ export default function PatientDashboard() {
 
               <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
                 <p className="text-sm text-blue-800">ℹ️ Payments are verified within 2 hours during working hours. You will receive a confirmation once your session is confirmed.</p>
-              </div>
-            </section>
-          )}
-
-          {/* SECTION 4: PROGRESS */}
-          {activeSection === 'progress' && (
-            <section>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-                <div className="card">
-                  <p className="text-xs text-gray-400 font-semibold uppercase tracking-widest">Current Streak</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-2">12 Days 🔥</p>
-                  <p className="text-xs text-gray-500 mt-1">Keep it up!</p>
-                </div>
-                <div className="card">
-                  <p className="text-xs text-gray-400 font-semibold uppercase tracking-widest">Total Sessions</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-2">{sessions.length}</p>
-                  <p className="text-xs text-gray-500 mt-1">Since joining MindBridge</p>
-                </div>
-                <div className="card">
-                  <p className="text-xs text-gray-400 font-semibold uppercase tracking-widest">Avg. Session Mood</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-2">😊 Positive</p>
-                  <p className="text-xs text-gray-500 mt-1">Based on last 3 sessions</p>
-                </div>
-              </div>
-
-              <div className="card mb-6">
-                <h3 className="font-bold text-gray-800 mb-4">Recent Mood Log</h3>
-                <div className="space-y-4">
-                  {pastList.length === 0 ? (
-                    <p className="text-sm text-gray-400">No sessions logged yet.</p>
-                  ) : pastList.map((s, idx) => (
-                    <div key={s.id}>
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs text-gray-400">{s.date}</p>
-                        <div className="flex items-center gap-4 flex-1 ml-4">
-                          <p className="text-sm font-medium text-gray-800">{s.therapist}</p>
-                          {s.mood ? (
-                            <span className={`badge ${moodColors[s.moodColor]}`}>
-                              {s.moodColor === 'green' ? '😊' : s.moodColor === 'blue' ? '⚡' : '😴'} {s.mood}
-                            </span>
-                          ) : (
-                            <span className="badge badge-gray">—</span>
-                          )}
-                        </div>
-                      </div>
-                      {idx < pastList.length - 1 && <div className="border-b border-gray-100 mt-4"></div>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="card">
-                <h3 className="font-bold text-gray-800 mb-4">Your Milestones</h3>
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex items-start gap-3">
-                      <span className="text-lg">✅</span>
-                      <div className="flex-1">
-                        <p className="font-bold text-gray-800">First Session Completed</p>
-                        <p className="text-xs text-gray-400 mt-1">You took the first step. That's the hardest part.</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="border-b border-gray-100"></div>
-                  <div>
-                    <div className="flex items-start gap-3">
-                      <span className="text-lg">✅</span>
-                      <div className="flex-1">
-                        <p className="font-bold text-gray-800">5 Sessions Milestone</p>
-                        <p className="text-xs text-gray-400 mt-1">Consistency is healing. You've completed 5 sessions.</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="border-b border-gray-100"></div>
-                  <div>
-                    <div className="flex items-start gap-3">
-                      <span className="text-lg">🔒</span>
-                      <div className="flex-1">
-                        <p className="font-bold text-gray-800 text-gray-400">10 Sessions Badge</p>
-                        <p className="text-xs text-gray-400 mt-1">Complete 10 sessions to unlock this milestone.</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
               </div>
             </section>
           )}
