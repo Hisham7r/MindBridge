@@ -63,11 +63,14 @@ Therapists own their calendar — slots no longer depend on the seed script (ADR
   `availabilitySlot.updateMany({where:{id, isBooked:false}, data:{isBooked:true}})` (atomic claim; if
   `count===0` the slot was taken → 409) → create `Session(PENDING_PAYMENT)` with computed `sessionNumber`.
 - `GET /sessions/my` (PATIENT) · `GET /sessions/therapist/my` (THERAPIST). Static `/therapist/my`
-  declared **before** `/:id` so it isn't captured as an id.
+  declared **before** `/:id` so it isn't captured as an id. **The therapist list excludes
+  `PENDING_PAYMENT`** — a therapist only sees a booking once its payment is approved (ADR-023); a
+  rejected-payment session (which stays `PENDING_PAYMENT`) therefore never lingers on the therapist side.
 - `GET /sessions/:id` (auth) — any involved party; ownership enforced in `assertCanAccessSession`.
 - `PATCH /sessions/:id/status` (THERAPIST/ADMIN) — e.g. "Mark Complete" → `COMPLETED`; terminal states
-  can't change (409).
-- `PATCH /sessions/:id/zoom` (THERAPIST/ADMIN) — attach a Zoom link.
+  can't change (409); **rejected if still `PENDING_PAYMENT`** (only payment approval leaves that state).
+- `PATCH /sessions/:id/zoom` (THERAPIST/ADMIN) — attach a Zoom link; **409 if the session is still
+  `PENDING_PAYMENT`** (can't send a link before payment is approved — ADR-023).
 - Frontend: `pages/BookSession.jsx`, `PatientDashboard.jsx`, `TherapistDashboard.jsx`.
 
 ## D. Payments — manual EasyPaisa (ADR-001)

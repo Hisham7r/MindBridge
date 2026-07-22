@@ -176,6 +176,14 @@ export const updateStatus = async (id, status, requester) => {
     throw error
   }
 
+  // Payment approval is the ONLY way a session leaves PENDING_PAYMENT
+  // (→ CONFIRMED). A therapist/admin can't advance an unpaid session here.
+  if (session.status === 'PENDING_PAYMENT') {
+    const error = new Error('This session cannot be updated until its payment is approved.')
+    error.status = 409
+    throw error
+  }
+
   if (['COMPLETED', 'CANCELLED'].includes(session.status)) {
     const error = new Error(`This session is already ${session.status} and cannot be updated.`)
     error.status = 409
@@ -211,7 +219,11 @@ export const getSessionsByPatient = async (patientId) => {
  */
 export const getSessionsByTherapist = async (userId) => {
   const sessions = await prisma.session.findMany({
-    where: { therapist: { userId } },
+    // A therapist only sees a session once its payment is approved (status
+    // leaves PENDING_PAYMENT → CONFIRMED). Unpaid/awaiting-payment bookings —
+    // including ones whose payment was rejected (they stay PENDING_PAYMENT) —
+    // are not real appointments yet and stay hidden from the therapist.
+    where: { therapist: { userId }, status: { not: 'PENDING_PAYMENT' } },
     include: sessionInclude,
     orderBy: { createdAt: 'desc' },
   })
@@ -238,6 +250,15 @@ export const setZoomLink = async (id, zoomLink, requester) => {
   if (requester.role !== 'ADMIN' && session.therapist.userId !== requester.id) {
     const error = new Error('You can only update your own sessions.')
     error.status = 403
+    throw error
+  }
+
+  // A session link can only be added once the payment is approved (the session
+  // has left PENDING_PAYMENT). Guarded here — not just hidden in the UI — so a
+  // direct API call can't leak a link for an unpaid booking.
+  if (session.status === 'PENDING_PAYMENT') {
+    const error = new Error('You can add a session link only after the payment is approved.')
+    error.status = 409
     throw error
   }
 

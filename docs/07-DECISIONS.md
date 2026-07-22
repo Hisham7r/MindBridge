@@ -213,3 +213,19 @@
   until a real need appears. Clean bolt-on later: a settings row + one rule in `availabilitySchema`.
 - **Consequences:** Admin nav = Overview, People, Finance, Security, Support. No fake controls remain in
   the admin console.
+
+## ADR-023 — Therapist sees a session only once its payment is approved
+- **Context:** A booking is created `PENDING_PAYMENT`. The therapist list returned *all* sessions and the
+  zoom endpoint had no status guard — so a therapist could see (and send a Zoom link for) an **unpaid**
+  booking, and the patient received it before paying. Separately, a *rejected* payment leaves the session
+  `PENDING_PAYMENT` (ADR-019), so it lingered on the therapist side even though the patient's card hid it.
+- **Decision:** A therapist only sees a session once payment approval flips it to `CONFIRMED`. Two layers:
+  (1) **visibility** — `getSessionsByTherapist` filters out `PENDING_PAYMENT`; (2) **safety guard** —
+  `setZoomLink` and `updateStatus` reject a `PENDING_PAYMENT` session (409), so a crafted API call can't
+  bypass the hidden UI (UI ≠ security). Payment approval remains the only path out of `PENDING_PAYMENT`.
+- **Rejected:** Option A — keep showing the unpaid card but just disable the zoom button. It leaves
+  non-actionable clutter, inflates the therapist's session stats, and is weaker (UI-only). Hiding is
+  cleaner and matches how real provider platforms show only confirmed bookings.
+- **Consequences:** One rule ("therapist sees a session only when it's paid") fixes both the
+  zoom-before-payment leak **and** the rejected-session-lingering mismatch. An unpaid session's slot is
+  still held (`isBooked=true`), so the therapist's calendar is correctly blocked meanwhile.
