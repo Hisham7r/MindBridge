@@ -45,10 +45,6 @@ export default function Footer() {
         </div>
         <div className="border-t border-gray-100 mt-8 pt-6 flex items-center justify-between">
           <p className="text-xs text-gray-400">MindBridge — Pakistan's Mental Health Platform</p>
-          <div className="flex items-center gap-3">
-            <span className="text-xl cursor-pointer hover:opacity-70 transition-opacity">🌐</span>
-            <span className="text-xl cursor-pointer hover:opacity-70 transition-opacity">💙</span>
-          </div>
         </div>
       </div>
     </footer>

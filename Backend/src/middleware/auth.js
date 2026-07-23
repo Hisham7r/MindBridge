@@ -4,9 +4,6 @@ import jwt from 'jsonwebtoken'
  * Protects routes by verifying the JWT Bearer token in the Authorization header.
  * On success, attaches the decoded payload to req.user and calls next().
  * On failure, responds with 401 Unauthorized.
- *
- * NOTE: jsonwebtoken will be installed in Phase 2 (npm install jsonwebtoken).
- *       This file is a stub — it will be fully wired up during auth implementation.
  */
 export default function auth(req, res, next) {
   const authHeader = req.headers['authorization']
