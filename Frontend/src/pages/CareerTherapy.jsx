@@ -122,20 +122,68 @@ export default function CareerTherapy() {
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-green-50 rounded-2xl p-5 flex flex-col justify-between border border-green-100">
                 <div>
-                  <span className="text-2xl">🚀</span>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    className="w-8 h-8"
+                  >
+                    {/* Solid Silhouette Figure */}
+                    <g fill="currentColor">
+                      <circle cx="12" cy="4.5" r="2.5" />
+                      <path d="M15 8H9a2 2 0 0 0-2 2v6a1 1 0 0 0 2 0v-5h.5v10a1 1 0 0 0 2 0v-7h1v7a1 1 0 0 0 2 0v-10h.5v5a1 1 0 0 0 2 0v-6a2 2 0 0 0-2-2z" />
+                    </g>
+                    {/* Outward Pointing Arrows */}
+                    <g stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                      <path d="M6 14L1 11 M3.5 9.5L1 11l1.5 2.5" />
+                      <path d="M6 18L1 21 M2.5 18.5L1 21l2.5 1.5" />
+                      <path d="M18 14l5-3 M20.5 9.5L23 11l-1.5 2.5" />
+                      <path d="M18 18l5 3 M21.5 18.5L23 21l-2.5 1.5" />
+                    </g>
+                  </svg>
                   <h4 className="font-bold text-gray-800 mt-2">Growth Without Burnout</h4>
                   <p className="text-xs text-gray-500 mt-1">Sustainable long-term career achievements.</p>
                 </div>
               </div>
-              <div className="bg-blue-600 rounded-2xl p-5 flex flex-col justify-between">
+              <div className="bg-white rounded-2xl p-5 flex flex-col justify-between">
                 <div>
-                  <span className="text-2xl">🔒</span>
-                  <h4 className="font-bold text-white mt-2">Private & Secure</h4>
-                  <p className="text-xs text-blue-200 mt-1">Your sessions are fully confidential.</p>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="w-8 h-8"
+                  >
+                    {/* Lock Shackle */}
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                    {/* Lock Body */}
+                    <rect x="5" y="11" width="14" height="10" rx="2" ry="2" />
+                    {/* Keyhole Accent */}
+                    <circle cx="12" cy="16" r="1" fill="currentColor" stroke="none" />
+                    <path d="M12 17v1" />
+                  </svg>
+                  <h4 className="font-bold text-gray-800 mt-2">Private & Secure</h4>
+                  <p className="text-xs text-gray-500 mt-1">Your sessions are fully confidential.</p>
                 </div>
               </div>
               <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
-                <span className="text-2xl">🧠</span>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="w-8 h-8"
+                >
+                  <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z" />
+                  <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z" />
+                  <path d="M15 13a4.5 4.5 0 0 1-3-4" />
+                  <path d="M9 13a4.5 4.5 0 0 0 3-4" />
+                </svg>
                 <h4 className="font-bold text-gray-800 mt-2">Mental Clarity</h4>
                 <p className="text-xs text-gray-500 mt-1">Clear the mental fog blocking your vision.</p>
               </div>

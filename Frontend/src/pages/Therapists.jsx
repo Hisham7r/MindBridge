@@ -49,8 +49,55 @@ export default function Therapists() {
         <div className="flex gap-3 mb-6 flex-wrap">
           {[
             { value: '', label: 'All' },
-            { value: 'mental-health', label: '🧠 Mental Health Therapy' },
-            { value: 'career', label: '🚀 Career Guidance' },
+            {
+              value: 'mental-health',
+              label: (
+                <span className="flex items-center gap-2">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="w-4 h-4"
+                  >
+                    <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z" />
+                    <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z" />
+                    <path d="M15 13a4.5 4.5 0 0 1-3-4" />
+                    <path d="M9 13a4.5 4.5 0 0 0 3-4" />
+                  </svg>
+                  Mental Health Therapy
+                </span>
+              )
+            },
+            {
+              value: 'career',
+              label: (
+                <span className="flex items-center gap-2">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    className="w-4 h-4"
+                  >
+                    {/* Solid Silhouette Figure */}
+                    <g fill="currentColor">
+                      <circle cx="12" cy="4.5" r="2.5" />
+                      <path d="M15 8H9a2 2 0 0 0-2 2v6a1 1 0 0 0 2 0v-5h.5v10a1 1 0 0 0 2 0v-7h1v7a1 1 0 0 0 2 0v-10h.5v5a1 1 0 0 0 2 0v-6a2 2 0 0 0-2-2z" />
+                    </g>
+                    {/* Outward Pointing Arrows */}
+                    <g stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                      <path d="M6 14L1 11 M3.5 9.5L1 11l1.5 2.5" />
+                      <path d="M6 18L1 21 M2.5 18.5L1 21l2.5 1.5" />
+                      <path d="M18 14l5-3 M20.5 9.5L23 11l-1.5 2.5" />
+                      <path d="M18 18l5 3 M21.5 18.5L23 21l-2.5 1.5" />
+                    </g>
+                  </svg>
+                  Career Guidance
+                </span>
+              )
+            },
           ].map((t) => (
             <button
               key={t.value}

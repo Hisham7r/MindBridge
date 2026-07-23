@@ -357,7 +357,13 @@ export default function PatientDashboard() {
                         <div className="flex-1">
                           <p className="font-bold text-gray-800">{session.therapist}</p>
                           <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
-                            ⏰ {session.status === 'upcoming' ? `Tomorrow, ${session.time}` : session.date + ' • ' + session.time}
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" className="flex-shrink-0">
+                              <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2" />
+                              <line x1="12" y1="12" x2="12" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                              <line x1="12" y1="12" x2="8.5" y2="15.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                              <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+                            </svg>
+                            {session.status === 'upcoming' ? `Tomorrow, ${session.time}` : session.date + ' • ' + session.time}
                           </p>
                         </div>
                         {session.zoomLink ? (
